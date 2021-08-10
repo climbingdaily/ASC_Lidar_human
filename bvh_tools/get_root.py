@@ -49,5 +49,5 @@ dirname = os.path.dirname(joints_file)
 file_name = Path(joints_file).stem
 save_file = os.path.join(dirname, file_name + '_root.txt')
 np.savetxt(save_file, head, fmt="%.3f")
-
+print('save root in: ', save_file)
 #python get_root.py [csv_file_path]
