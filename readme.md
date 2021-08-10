@@ -1,6 +1,5 @@
 
 # 1. bvh_tools
----
 ### [从BVH中提取ROOT point](bvh_tools/get_root.py)
 ```
 python get_root.py [bvh_file]
@@ -13,7 +12,6 @@ python get_root.py [bvh_file]
     bvh2csv [bvhfile] #直接在命令行运行
     ```
 # 2. lidar_traj_tools
----
 ### [将Mocap的数据配准到LiDAR轨迹到](lidar_traj_tools/mocap_to_lidar.py)
 ```
 python mocap_to_lidar.py [*pos.csv] [*rot.csv] [*lidar_traj.txt]
