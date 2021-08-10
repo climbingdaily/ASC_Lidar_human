@@ -1,2 +1,5 @@
 bvh_test.py
 tools.py
+data/
+.vscode/
+__pycache__/
