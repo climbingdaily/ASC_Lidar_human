@@ -15,7 +15,6 @@ import config as cfg
 
 
 def save_ply(vertice, out_file):
-    vertice = vertice.squeeze().cpu().numpy()
     model_file = cfg.SMPL_FILE
     with open(model_file, 'rb') as f:
         smpl_model = pickle.load(f, encoding='iso-8859-1')

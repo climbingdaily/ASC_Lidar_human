@@ -16,6 +16,8 @@ import math
 import os
 import pandas as pd
 import torch
+import sys
+from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--bvh_name', type=str)
@@ -143,21 +145,44 @@ def main():
 
 
 if __name__ == '__main__':
+    if len(sys.argv) < 4:
+        rotpath = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\数据采集\\0719\\mocap_csv\\02_with_lidar_rot_trans_T.csv'
+        lidar_file = "e:\\Daiyudi\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\02lidar\\traj_with_timestamp_变换后的轨迹_与mocap重叠部分.txt"
+        out_dir = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\数据采集\\0719\\mocap_csv\\SMPL'
+    elif len(sys.argv) == 3:
+        rotpath = sys.argv[1]
+        lidar_file = sys.argv[2]
+        out_dir = os.path.join(os.path.dirname(rotpath), 'SMPL')
+    elif len(sys.argv) == 4:
+        rotpath = sys.argv[1]
+        lidar_file = sys.argv[2]
+        out_dir = sys.argv[3]
+    else:
+        print('请输入正确参数! *rot.csv *lidar_traj.txt [out_dir] ')
+        exit()
 
-    rotation_df = pd.read_csv('data/02_with_lidar_rot_new.csv')
-    rotation_df = pd.read_csv('data/02_with_lidar_rot_test.csv')
+    os.makedirs(out_dir, exist_ok=True)
+    smpl_out_dir = os.path.join(out_dir, Path(rotpath).stem)
+    os.makedirs(smpl_out_dir, exist_ok=True)
 
-    with open('data/traj_with_timestamp.txt') as f:
+    rotation_df = pd.read_csv(rotpath)
+    lidar = np.loadtxt(lidar_file, dtype=float)
+    with open(lidar_file) as f:
         lines = f.readlines()
     n = min(len(rotation_df), len(lines))
     smpl = SMPL()
-    out_dir = '/home/ljl/data/pose_estimation/dai_smpl_out'
-    os.makedirs(out_dir, exist_ok=True)
+    
+    # mocap->lidar坐标系
+    mocap_init = np.array([
+        [-1, 0, 0],
+        [0, 0, 1], 
+        [0, 1, 0]])
 
-    for i in range(n):
-        translation = list(map(float, lines[i].split(' ')[1:4]))
+    for i in range(min(lidar.shape[0], len(rotation_df))):
         vertices = smpl(torch.from_numpy(get_pose_from_bvh(
             rotation_df, i, False)).unsqueeze(0).float(), torch.zeros((1, 10)))
-        print(vertices.shape)
-        generate_ply.save_ply(vertices, 'data/vertices_smpl.ply')
-        exit()
+        vertices = vertices.squeeze().cpu().numpy()
+        translation = lidar[i, 1:4]
+        vertices = np.matmul(mocap_init, vertices.T).T + translation
+        generate_ply.save_ply(vertices, os.path.join(smpl_out_dir, str(i) + '_smpl.ply'))
+    print('SMPL saved in: ', smpl_out_dir)
