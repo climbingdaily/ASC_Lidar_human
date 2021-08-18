@@ -12,10 +12,10 @@ import os
 import pickle
 import cv2 as cv
 import config as cfg
-
+from .config import SMPL_FILE
 
 def save_ply(vertice, out_file):
-    model_file = cfg.SMPL_FILE
+    model_file = SMPL_FILE
     with open(model_file, 'rb') as f:
         smpl_model = pickle.load(f, encoding='iso-8859-1')
         face_index = smpl_model['f'].astype(np.int64)

@@ -7,21 +7,17 @@
 ________________________,--._(___Y___)_,--._______________________
                         `--'           `--'
 '''
-from smpl import SMPL
+from .smpl import SMPL
 
 import numpy as np
 import argparse
-import generate_ply
+from .generate_ply import save_ply
 import math
 import os
 import pandas as pd
 import torch
 import sys
 from pathlib import Path
-
-parser = argparse.ArgumentParser()
-parser.add_argument('--bvh_name', type=str)
-args = parser.parse_args()
 
 '''
 pose --> rotation of 24 skelentons
@@ -145,7 +141,7 @@ def main():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 3:
         rotpath = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\数据采集\\0719\\mocap_csv\\02_with_lidar_rot_trans_T.csv'
         lidar_file = "e:\\Daiyudi\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\02lidar\\traj_with_timestamp_变换后的轨迹_与mocap重叠部分.txt"
         out_dir = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\数据采集\\0719\\mocap_csv\\SMPL'
@@ -154,6 +150,8 @@ if __name__ == '__main__':
         lidar_file = sys.argv[2]
         out_dir = os.path.join(os.path.dirname(rotpath), 'SMPL')
     elif len(sys.argv) == 4:
+        print(len(sys.argv))
+
         rotpath = sys.argv[1]
         lidar_file = sys.argv[2]
         out_dir = sys.argv[3]
@@ -164,6 +162,10 @@ if __name__ == '__main__':
     os.makedirs(out_dir, exist_ok=True)
     smpl_out_dir = os.path.join(out_dir, Path(rotpath).stem)
     os.makedirs(smpl_out_dir, exist_ok=True)
+
+    print('rotpath: ', rotpath)
+    print('lidar_file: ', lidar_file)
+    print('out_dir: ', out_dir)
 
     rotation_df = pd.read_csv(rotpath)
     lidar = np.loadtxt(lidar_file, dtype=float)
@@ -184,5 +186,5 @@ if __name__ == '__main__':
         vertices = vertices.squeeze().cpu().numpy()
         translation = lidar[i, 1:4]
         vertices = np.matmul(mocap_init, vertices.T).T + translation
-        generate_ply.save_ply(vertices, os.path.join(smpl_out_dir, str(i) + '_smpl.ply'))
+        save_ply(vertices, os.path.join(smpl_out_dir, str(i) + '_smpl.ply'))
     print('SMPL saved in: ', smpl_out_dir)

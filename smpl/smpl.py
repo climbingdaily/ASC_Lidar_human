@@ -16,18 +16,19 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import config as cfg
+from .config import *
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
-from geometric_layers import rodrigues
+from .geometric_layers import rodrigues
 
 
 class SMPL(nn.Module):
 
     def __init__(self):
         super(SMPL, self).__init__()
-        model_file = cfg.SMPL_FILE
+        model_file = SMPL_FILE
         with open(model_file, 'rb') as f:
             smpl_model = pickle.load(f, encoding='iso-8859-1')
         J_regressor = smpl_model['J_regressor'].tocoo()
@@ -70,9 +71,9 @@ class SMPL(nn.Module):
         self.R = None
 
         J_regressor_extra = torch.from_numpy(
-            np.load(cfg.JOINT_REGRESSOR_TRAIN_EXTRA)).float()
+            np.load(JOINT_REGRESSOR_TRAIN_EXTRA)).float()
         self.register_buffer('J_regressor_extra', J_regressor_extra)
-        self.joints_idx = cfg.JOINTS_IDX
+        self.joints_idx = JOINTS_IDX
 
     def forward(self, pose, beta):
         device = pose.device
@@ -142,5 +143,5 @@ class SMPL(nn.Module):
         joints_extra = torch.einsum(
             'bik,ji->bjk', [vertices, self.J_regressor_extra])
         joints = torch.cat((joints, joints_extra), dim=1)
-        joints = joints[:, cfg.JOINTS_IDX]
+        joints = joints[:, JOINTS_IDX]
         return joints
