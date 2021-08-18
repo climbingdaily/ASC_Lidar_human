@@ -2,9 +2,12 @@ import pandas as pd
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
 import numpy as np
-from bvh_tool import Bvh
+from bvh_tools.bvh_tool import Bvh
 import sys
 import os
+from smpl.smpl import SMPL
+from smpl.skele2smpl import get_pose_from_bvh
+from smpl.generate_ply import save_ply
 
 mocap_init = np.array([
     [-1, 0, 0, 0],
@@ -333,27 +336,43 @@ if __name__ == '__main__':
         position[i] = np.matmul(mocap_to_lidar[:3,:3], pos_init).T + mocap_to_lidar[:3,3] # m * 3，再进行旋转平移
 
         # 将mocap的所有关节的旋转都改变
-        new_rot[i, 0] = rot_data[mocap_number, 0].copy()
-        for j in range(rot_data.shape[1]//3):
-            R_ij = R.from_euler(
-                'yxz', rot_data[mocap_number, j*3 + 1:j*3 + 4], degrees=True).as_matrix()
+        new_rot[i] = rot_data[mocap_number]
+        # new_rot[i, 0] = rot_data[mocap_number, 0].copy()
+        # for j in range(rot_data.shape[1]//3):
+        #     R_ij = R.from_euler(
+        #         'yxz', rot_data[mocap_number, j*3 + 1:j*3 + 4], degrees=True).as_matrix()
       
-            R_ijj = np.matmul(mocap_init[:3,:3], R_ij)  
-            R_ijj = np.matmul(mocap_to_lidar[:3,:3], R_ijj) # mocap->lidar 配准旋转矩阵
-            R_ijj = np.matmul(mocap_init[:3,:3], R_ijj)  
-            new_rot[i, j*3 + 1:j*3 + 4] = R.from_matrix(R_ijj).as_euler('yxz', degrees=True)
-        
+            # R_ijj = np.matmul(mocap_init[:3,:3], R_ij)  
+            # R_ijj = np.matmul(mocap_to_lidar[:3,:3], R_ijj) # mocap->lidar 配准旋转矩阵
+            # R_ijj = np.matmul(mocap_init[:3,:3], R_ijj)  
+            # new_rot[i, j*3 + 1:j*3 + 4] = R.from_matrix(R_ijj).as_euler('yxz', degrees=True)
+
+    # 4. 转换SMPL 
+    import torch
+    from tqdm import tqdm
+    savedir = os.path.join(os.path.dirname(rotpath), 'SMPL')
     new_rot_csv = pd.DataFrame(new_rot, columns = [col for col in rot_data_csv.columns])
+    
+    os.makedirs(savedir, exist_ok=True)
+    smpl_out_dir = os.path.join(savedir, Path(rotpath).stem)
+    os.makedirs(smpl_out_dir, exist_ok=True)
+    smpl = SMPL()
+    bar = tqdm(range(lidar_end - lidar_start + 1))
+    for count in bar:
+        vertices = smpl(torch.from_numpy(get_pose_from_bvh(
+            new_rot_csv, count, False)).unsqueeze(0).float(), torch.zeros((1, 10)))
+        vertices = vertices.squeeze().cpu().numpy()
+        translation = lidar[count, 1:4]
+        vertices = np.matmul(mocap_init[:3, :3], vertices.T)
+        vertices = np.matmul(mocap_to_lidar[:3, :3], vertices).T + translation
+        ply_save_path = os.path.join(smpl_out_dir, str(count) + '_smpl.ply')
+        save_ply(vertices,ply_save_path)
+        bar.set_description("Save number %d/%d ply in " % (count, lidar_end - lidar_start))
+    print('SMPL saved in: ', smpl_out_dir)
+
+    # 5. 保存pose
     save_in_same_csv(rotpath, new_rot_csv, '_trans_RT')
     save_in_same_dir(lidar_file, lidar[lidar_start:lidar_end+1], '_与mocap重叠部分') #保存有效轨迹
-    # 将3D投影回2D
-    # anim_output = {'view1': position}
-    # azimuths = 150
-    # viz_output = ''
-    # viz_bitrate = 400
-    # viz_video = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\VID_20210722_054704.mp4"
-    # render_animation(input_keypoints, anim_output, 20, viz_bitrate,
-    #                 azim=azimuths, output=viz_output, limit=300, size= 7, input_video_path=viz_video, frame_num=frame_num, viewport=(2304/2, 1296/2), input_video_skip=0,  key=key)
-    # 4. 保存pose
-    save_pose(pospath, position, skip = 1)
+    
+    save_pose(pospath, position, skip = 40)
 
