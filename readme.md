@@ -34,6 +34,19 @@ python transform_lidar_traj.py [lidar_traj_path] [旋转矩阵地址]
 ```
 * 旋转矩阵为4 * 4
 * 可输入多个旋转矩阵文件
+
+## [转换ouster的pcap文件](lidar_traj_tools/ouster_pcap_to_txt.py)
+```
+pip install ouster-sdk #安装依赖库
+python ouster_pcap_to_txt.py *.pcap [frame_num]
+```
+#### 输入
+1. pcap地址
+2. 待转换的帧数（默认所有帧）
+#### 输出
+- txt文件将输出到pcap文件同目录下的文件夹内
+
+   
 # 3. visualization
 ### [利用open3D可视化RT](visualization/visualize_RT.py)
 ```
