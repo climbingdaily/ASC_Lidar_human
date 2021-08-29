@@ -1,7 +1,7 @@
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
 import numpy as np
-from bvh_tool import Bvh
+from bvh_tools.bvh_tool import Bvh
 import sys
 import os
 
