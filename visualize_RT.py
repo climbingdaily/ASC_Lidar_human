@@ -121,7 +121,7 @@ if __name__ == "__main__":
             rot_file = sys.argv[3]
         elif key == '-m':
             plydir = sys.argv[2]
-            lidar_file = sys.argv[3]
+            # lidar_file = sys.argv[3]
         else:
             print('python visualize_RT.py [-l] [lidar_traj_path]')
             print('python visualize_RT.py [-b] [bvh_path]')
@@ -218,9 +218,9 @@ if __name__ == "__main__":
         imagedir = os.path.join(plydir, 'image')
         os.makedirs(imagedir, exist_ok=True)
 
-        rt_file = np.loadtxt(lidar_file, dtype=float)        
-        rotations = R.from_quat(rt_file[:, 4: 8]).as_matrix()  #3*3
-        translations = rt_file[:,1:4]
+        # rt_file = np.loadtxt(lidar_file, dtype=float)        
+        # rotations = R.from_quat(rt_file[:, 4: 8]).as_matrix()  #3*3
+        # translations = rt_file[:,1:4]
         _init_ = np.array([
             [-1, 0, 0, 0],
             [0, -1, 0, 0], 
@@ -256,7 +256,7 @@ if __name__ == "__main__":
             mesh.compute_vertex_normals()
             
             # set_camera_pose
-            r = np.matmul(rotations[i], np.linalg.inv(rotations[0]))
+            # r = np.matmul(rotations[i], np.linalg.inv(rotations[0]))
             # r = np.matmul(camera_init, r)
             camera_pose = camera_init
             # camera_pose = toRt(rotations[i], translations[i])
@@ -275,7 +275,7 @@ if __name__ == "__main__":
             else:
                 with Timer('update renderer'):
                     vis.update_geometry(mesh)
-                    t = translations[i] - translations[i-1]
+                    # t = translations[i] - translations[i-1]
                     # camera_pose[:3, 3] -= t 
                     # np.array([-t[2], -t[0], -t[1]])
                     # o3dcallback(camera_pose)

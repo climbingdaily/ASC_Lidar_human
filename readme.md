@@ -53,5 +53,6 @@ python ouster_pcap_to_txt.py *.pcap [frame_num]
 python visualize_RT.py -l [lidar_traj_path] # 可视化lidar的轨迹，数据格式是 line_number*9
 python visualize_RT.py -b [bvh_path] #可视化bvh文件hip关节的轨迹
 python visualize_RT.py -c [csv_pos_path] [csv_rot_path] #可视化rot 和 pos 文件 hip关节的轨迹和旋转
+python visualize_RT.py -m [smpl_dir]  #可视化SMPL, 点云地址在代码内指定
 ```
 * 代码的51-54行指定了点云的位置，可以注释掉或者改成自己的点云文件地址
