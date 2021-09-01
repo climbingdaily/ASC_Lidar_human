@@ -26,6 +26,15 @@ vis = o3d.visualization.VisualizerWithKeyCallback()
 # vis.register_key_callback(ord('A'), o3d_callback_rotate)
 vis.create_window(window_name='RT', width=2096, height=1024)
 
+def toRt(r, t):
+    '''
+    将3*3的R转成4*4的R
+    '''
+    share_vector = np.array([0,0,0,1], dtype=float)[np.newaxis, :]
+    r = np.concatenate((r, t.reshape(-1,1)), axis = 1)
+    r = np.concatenate((r, share_vector), axis=0)
+    return r
+
 def triangle_pcd(start, end):
     '''
     定义三角形的点云
@@ -85,21 +94,21 @@ def get_camera():
     init_param = ctr.convert_to_pinhole_camera_parameters()
     return np.array(init_param.extrinsic)
 
-def o3dcallback(a=None):
+def o3dcallback(camera_pose=None):
     # if rotate:
     # camera['phi'] += np.pi/10
-    camera_pose = set_camera(get_camera())
-    camera_pose = np.array([[-0.927565, 0.36788, 0.065483, -1.18345],
-              [0.0171979, 0.217091, -0.976, -0.0448631],
-              [-0.373267, -0.904177, -0.207693, 8.36933],
-              [0, 0, 0, 1]])
-    # print(camera_pose)
+    # camera_pose = set_camera(get_camera())
+    # camera_pose = np.array([[-0.927565, 0.36788, 0.065483, -1.18345],
+    #                         [0.0171979, 0.217091, -0.976, -0.0448631],
+    #                         [-0.373267, -0.904177, -0.207693, 8.36933],
+    #                         [0, 0, 0, 1]])
+    print(camera_pose)
     init_camera(camera_pose)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        key = '-m'
-        lidar_file = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\02lidar\\traj_with_timestamp_变换后的轨迹.txt"
+        key = '-l'
+        lidar_file = "E:\\SCSC_DATA\HumanMotion\\0828\\20210828haiyunyuan002_pcap_to_txt_0_to_1600\\traj_with_timestamp_变换后的轨迹.txt"
         plydir = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\mocap_csv\SMPL\\02_with_lidar_rot"
     else:
         key = sys.argv[1]
@@ -112,21 +121,22 @@ if __name__ == "__main__":
             rot_file = sys.argv[3]
         elif key == '-m':
             plydir = sys.argv[2]
+            lidar_file = sys.argv[3]
         else:
             print('python visualize_RT.py [-l] [lidar_traj_path]')
             print('python visualize_RT.py [-b] [bvh_path]')
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    pcdroot = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\实验室6楼'
-    pcd_floor = o3d.io.read_point_cloud(os.path.join(pcdroot, '地板.pcd'))
-    pcd_wall1 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙1.pcd'))
-    pcd_wall2 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙2.pcd'))
-    pcd_room = o3d.io.read_point_cloud(os.path.join(pcdroot, '硕士间.pcd'))
+    pcdroot = 'E:\\SCSC_DATA\HumanMotion\\0828\\20210828haiyunyuan002_pcap_to_txt_0_to_1600'
+    pcd_floor = o3d.io.read_point_cloud(os.path.join(pcdroot, 'color_map.pcd'))
+    # pcd_wall1 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙1.pcd'))
+    # pcd_wall2 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙2.pcd'))
+    # pcd_room = o3d.io.read_point_cloud(os.path.join(pcdroot, '硕士间.pcd'))
     geometies.append(pcd_floor)
-    geometies.append(pcd_wall1)
-    geometies.append(pcd_wall2)
-    geometies.append(pcd_room)
+    # geometies.append(pcd_wall1)
+    # geometies.append(pcd_wall2)
+    # geometies.append(pcd_room)
 
     for g in geometies:
         vis.add_geometry(g)
@@ -136,11 +146,15 @@ if __name__ == "__main__":
         for i in range(0, rt_file.shape[0], 20):
             # 读取 i 帧的 RT
             R_lidar = R.from_quat(rt_file[i, 4: 8]).as_matrix()  #3*3
-            R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init))
+            # R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init)) # 乘第一帧的逆
             R_T = rt_file[i, 1:4].reshape(1,3)   #1*3
             R_lidar = R_lidar.T + R_T
             line_pcd, point_pcd = triangle_pcd(R_T, R_lidar)
-            geometies.append(line_pcd)
+            # geometies.append(line_pcd)
+            vis.add_geometry(line_pcd)
+            vis.poll_events()
+            vis.update_renderer()
+            cv2.waitKey(10)
             # geometies.append(point_pcd)
 
     elif key == '-b':
@@ -204,6 +218,24 @@ if __name__ == "__main__":
         imagedir = os.path.join(plydir, 'image')
         os.makedirs(imagedir, exist_ok=True)
 
+        rt_file = np.loadtxt(lidar_file, dtype=float)        
+        rotations = R.from_quat(rt_file[:, 4: 8]).as_matrix()  #3*3
+        translations = rt_file[:,1:4]
+        _init_ = np.array([
+            [-1, 0, 0, 0],
+            [0, -1, 0, 0], 
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]])
+        camera_init = np.array([[0.927565, -0.36788, 0.065483, -1.18345],
+                        [-0.0171979, -0.217091, -0.976, -0.0448631],
+                        [0.373267, 0.904177, -0.207693, 4.36933],
+                        [0, 0, 0, 1]])
+                        
+        # camera_init = np.array([[1, 0, 0, -1.18345],
+        #                         [0, 0, -1, -0.0448631],
+        #                         [0, 1, 0, 4.36933],
+        #                         [0, 0, 0, 1]])
+        # camera_init = np.matmul(camera_init, _init_)
         for i in range(len(meshfiles) - 1):
             name = str(i)+'_smpl.ply'
             print('name', name)
@@ -223,13 +255,19 @@ if __name__ == "__main__":
             mesh.vertices = Vector3dVector(vertices)
             mesh.compute_vertex_normals()
             
+            # set_camera_pose
+            r = np.matmul(rotations[i], np.linalg.inv(rotations[0]))
+            # r = np.matmul(camera_init, r)
+            camera_pose = camera_init
+            # camera_pose = toRt(rotations[i], translations[i])
+            # camera_pose = np.linalg.inv(camera_pose)
             if i == 0:
                 for f in range(9+vertex_number, 9+vertex_number + face_number):
                     faces[f - 9 - vertex_number] = np.asarray(plylines[f].strip().split(' '), dtype=int)[1:]
                 mesh.triangles = Vector3iVector(faces)
-                mesh.paint_uniform_color([1., 0.8, 0.8])
+                mesh.paint_uniform_color([1., 1., 1.])
                 vis.add_geometry(mesh)
-                o3dcallback()
+                o3dcallback(camera_pose)
                 vis.poll_events()
                 vis.update_renderer()    
                 cv2.waitKey(10)
@@ -237,7 +275,10 @@ if __name__ == "__main__":
             else:
                 with Timer('update renderer'):
                     vis.update_geometry(mesh)
-                    # o3dcallback()
+                    t = translations[i] - translations[i-1]
+                    # camera_pose[:3, 3] -= t 
+                    # np.array([-t[2], -t[0], -t[1]])
+                    # o3dcallback(camera_pose)
                     vis.poll_events()
                     vis.update_renderer()
                     cv2.waitKey(10)

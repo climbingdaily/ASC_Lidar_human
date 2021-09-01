@@ -113,6 +113,14 @@ def get_pose_from_bvh(rotation_df, idx=0, converter_version=True):
                 xrot = math.radians(rotation_df.at[idx, each + '.x'])
                 yrot = math.radians(rotation_df.at[idx, each + '.y'])
                 zrot = math.radians(rotation_df.at[idx, each + '.z'])
+        if each == 'LeftShoulder':
+            zrot -= 0.3 
+        elif each == 'RightShoulder':
+            zrot += 0.3
+        elif each == 'LeftArm':
+            zrot += 0.3 
+        elif each == 'RightArm':
+            zrot -= 0.3
         rotmat = np.eye(3)
         rotmat = np.dot(rotmat, get_y_rot_mat(yrot))
         rotmat = np.dot(rotmat, get_x_rot_mat(xrot))
