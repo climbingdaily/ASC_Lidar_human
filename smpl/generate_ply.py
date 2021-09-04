@@ -11,11 +11,13 @@ import numpy as np
 import os
 import pickle
 import cv2 as cv
+import torch
 import config as cfg
 
 
-def save_ply(vertice, out_file):
-    vertice = vertice.squeeze().cpu().numpy()
+def save_ply(vertices, out_file):
+    if type(vertices) == torch.Tensor:
+        vertices = vertices.squeeze().cpu().numpy()
     model_file = cfg.SMPL_FILE
     with open(model_file, 'rb') as f:
         smpl_model = pickle.load(f, encoding='iso-8859-1')
@@ -26,7 +28,7 @@ def save_ply(vertice, out_file):
     if os.path.exists(out_file):
         os.remove(out_file)
     with open(out_file, "ab") as zjy_f:
-        np.savetxt(zjy_f, vertice, fmt='%f %f %f')
+        np.savetxt(zjy_f, vertices, fmt='%f %f %f')
         np.savetxt(zjy_f, face, fmt='%d %d %d %d')
     ply_header = '''ply
 format ascii 1.0
