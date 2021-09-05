@@ -4,6 +4,7 @@ data/
 .vscode/
 __pycache__/
 main.py
+test.py
 bin/
 tmp/
 mask_rcnn/
