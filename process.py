@@ -1,6 +1,9 @@
 from collections import namedtuple
-from concurrent.futures import as_completed, ThreadPoolExecutor
-from io3d import mocap, pcd
+from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExecutor
+from sys import path
+from io3d import mocap, pcd, ply
+from scipy.spatial.transform import Rotation as R
+from smpl import model as smpl_model
 from tqdm import tqdm
 from typing import Dict, List
 from util import mocap_util, path_util, pc_util, img_util, transformation
@@ -17,6 +20,7 @@ IMAGE_FRAME_RATE = 30
 POINTCLOUD_FRAME_RATE = 10
 MOCAP_FRAME_RATE = 90
 MAX_THREAD_COUNT = 16
+MIN_PERSON_POINTS_NUM = 50
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(filename)s[line:%(lineno)d] %(message)s', datefmt='%b %d %H:%M:%S')
@@ -32,8 +36,7 @@ def prepare_dataset_dirs(dataset_prefix):
         'root': ['calib', 'images', 'labels', 'pointclouds', 'mocaps'],
         'labels': ['2d', '3d'],
         '2d': ['mask', 'bbox', 'keypoints'],
-        '3d': ['smpl', 'segmentation'],
-        'smpl': ['param', 'mesh'],
+        '3d': ['pose', 'segment']
     }
 
     dataset_dirs = {}
@@ -189,10 +192,10 @@ def generate_keypoints(images_dir, keypoints_dir, openpose_path):
     os.chdir(origin_cwd)
 
 
-def generate_segmented_point_clouds(pc_dir: str,
-                                    seg_dir: str,
-                                    bg_points: np.ndarray,
-                                    crop_box: np.ndarray):
+def generate_segment(pc_dir: str,
+                     segment_dir: str,
+                     bg_points: np.ndarray,
+                     crop_box: np.ndarray):
     bg_kdtree = pc_util.get_kdtree(pc_util.crop_points(bg_points, crop_box))
     pc_filenames = path_util.get_sorted_filenames_by_index(pc_dir)
 
@@ -200,59 +203,115 @@ def generate_segmented_point_clouds(pc_dir: str,
         lidar_points = pcd.read_point_cloud(pc_filename)[:, :3]
         lidar_points = pc_util.crop_points(lidar_points, crop_box)
         lidar_points = pc_util.erase_background(lidar_points, bg_kdtree)
-        pcd.save_point_cloud(os.path.join(
-            seg_dir, os.path.basename(pc_filename)), lidar_points)
+        if lidar_points.shape[0] < MIN_PERSON_POINTS_NUM:
+            return False
+        basename = os.path.basename(pc_filename)
+        basename = os.path.splitext(basename)[0] + '.ply'
+        ply.save_point_cloud(os.path.join(segment_dir, basename), lidar_points)
+        return True
 
-    with ThreadPoolExecutor(MAX_THREAD_COUNT) as executor:
-        tasks = [executor.submit(generate_segmented_point_cloud, pc_filename)
-                 for pc_filename in pc_filenames]
-        for future in tqdm(as_completed(tasks), total=len(tasks)):
-            pass
-    print('Generate segmented point clouds finished')
+    reserved = [generate_segmented_point_cloud(
+        pc_filename) for pc_filename in pc_filenames]
+    logger.info('Generate segmented point clouds finished')
+    return reserved
+
+    # with ThreadPoolExecutor(MAX_THREAD_COUNT) as executor:
+    #     tasks = [executor.submit(generate_segmented_point_cloud, pc_filename)
+    #              for pc_filename in pc_filenames]
+    #     for _ in tqdm(as_completed(tasks), total=len(tasks)):
+    #         pass
 
 
 def generate_pose(cur_dirs: Dict[str, str],
                   mocap_data: mocap.MoCapData,
                   mocap_indexes: List[int],
-                  cur_process_info: Dict,
-                  bg_points: np.ndarray):
-    # TODO: C should be read for each instance
-    C = np.array([[1.62427591e-02, -9.99862523e-01, 3.34354090e-03,
-                 3.83774964e+01],
-                  [9.65757161e-01, 1.65545404e-02, 2.58919002e-01,
-                 -1.76110792e+01],
-                  [-2.58938730e-01, -9.76512034e-04, 9.65893269e-01,
-                 7.61942050e+00],
-                  [0.00000000e+00, 0.00000000e+00, 0.00000000e+00,
-                   1.00000000e+00]])
+                  cur_process_info: Dict):
+    # TODO: lidar_to_mocap_rotation should be read for each instance
+    lidar_to_mocap_RT = np.array([[1.62427591e-02, -9.99862523e-01, 3.34354090e-03, 3.83774964e+01],
+                                  [9.65757161e-01, 1.65545404e-02,
+                                      2.58919002e-01, -1.76110792e+01],
+                                  [-2.58938730e-01, -9.76512034e-04,
+                                      9.65893269e-01, 7.61942050e+00],
+                                  [0.00000000e+00, 0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+    segment_filenames = path_util.get_sorted_filenames_by_index(
+        cur_dirs.segment_dir)
 
-    pc_filenames = path_util.get_sorted_filenames_by_index(
-        cur_dirs.pointclouds_dir)
-    crop_box = cur_process_info['box']
-    bg_kdtree = pc_util.get_kdtree(pc_util.crop_points(bg_points, crop_box))
-
-    lidar_point_clouds = []
+    # Python中list的append操作是线程安全的，所以可以append的时候带上索引，然后按照索引排序
     mocap_point_clouds = []
     mocap_to_lidar_translations = []
-
+    origin_to_root_translations = []
+    poses = []
+    betas = []
     beta = np.array(cur_process_info['beta'])
-    pose_and_betas = []
-    print('Calculate MoCap to LiDAR translations')
-    for pc_filename, mocap_index in tqdm(zip(pc_filenames, mocap_indexes)):
-        lidar_points = pcd.read_point_cloud(pc_filename)[:, : 3]
-        lidar_points = pc_util.crop_points(lidar_points, crop_box)
-        lidar_points = pc_util.erase_background(lidar_points, bg_kdtree)
+
+    logger.info('Calculate MoCap to LiDAR translations')
+
+    # def foo1(segment_filename, mocap_index, index):
+    #     segment_points = ply.read_point_cloud(segment_filename)[:, : 3]
+    #     # 72 + 10 (pose + beta)
+    #     poses.append((mocap_data.pose(mocap_index), index))
+    #     betas.append((beta, index))
+
+    #     mocap_points = mocap_data.smpl_vertices(mocap_index, beta=beta)
+    #     mocap_to_lidar_translation = transformation.get_mocap_to_lidar_translation(
+    #         mocap_points, segment_points, lidar_to_mocap_rotation)
+
+    #     mocap_point_clouds.append((mocap_points, index))
+    #     mocap_to_lidar_translations.append((mocap_to_lidar_translation, index))
+    #     origin_to_root_translations.append(
+    #         (mocap_data.translation(mocap_index), index))
+
+    # with ProcessPoolExecutor(MAX_THREAD_COUNT) as executor:
+    #     with tqdm(total=len(segment_filenames)) as progress:
+    #         for index, (segment_filename, mocap_index) in enumerate(zip(segment_filenames, mocap_indexes)):
+    #             future = executor.submit(
+    #                 foo1, segment_filename, mocap_index, index)
+    #             future.add_done_callback(lambda _: progress.update())
+
+    # def sort_by_index(l):
+    #     return [x[0] for x in sorted(l, key=lambda x: x[1])]
+
+    # sort_by_index(poses)
+    # sort_by_index(betas)
+    # sort_by_index(mocap_point_clouds)
+    # sort_by_index(mocap_to_lidar_translations)
+    # sort_by_index(origin_to_root_translations)
+
+    # print(mocap_to_lidar_translations)
+
+    # with ThreadPoolExecutor(MAX_THREAD_COUNT) as executor:
+    #     tasks = [executor.submit(foo1, pc_filename, mocap_index)
+    #              for pc_filename, mocap_index in tqdm(zip(pc_filenames, mocap_indexes))]
+    #     for _ in tqdm(as_completed(tasks), total=len(tasks)):
+    #         pass
+
+    def foo1(segment_filename, mocap_index):
+        segment_points = ply.read_point_cloud(segment_filename)[:, : 3]
         # 72 + 10 (pose + beta)
-        pose_and_betas.append(np.concatenate(
-            (mocap_data.pose(mocap_index), beta)))
+        poses.append(mocap_data.pose(mocap_index))
+        betas.append(beta)
+
         mocap_points = mocap_data.smpl_vertices(mocap_index, beta=beta)
         mocap_to_lidar_translation = transformation.get_mocap_to_lidar_translation(
-            mocap_points, lidar_points, C) if lidar_points.shape[0] > 1 else None
+            mocap_points, segment_points, lidar_to_mocap_RT)
 
-        lidar_point_clouds.append(lidar_points)
         mocap_point_clouds.append(mocap_points)
         mocap_to_lidar_translations.append(mocap_to_lidar_translation)
-    np.save(os.path.join(cur_dirs.param_dir, 'param.npy'), pose_and_betas)
+        origin_to_root_translations.append(mocap_data.translation(mocap_index))
+
+    # index = 5
+    for segment_filename, mocap_index in tqdm(zip(segment_filenames, mocap_indexes), total=len(segment_filenames)):
+        foo1(segment_filename, mocap_index)
+        # index -= 1
+        # if index == 0:
+        #     break
+
+    # with ProcessPoolExecutor(MAX_THREAD_COUNT) as executor:
+    #     with tqdm(total=len(segment_filenames)) as progress:
+    #         for index, (segment_filename, mocap_index) in enumerate(zip(segment_filenames, mocap_indexes)):
+    #             future = executor.submit(
+    #                 foo1, segment_filename, mocap_index, index)
+    #             future.add_done_callback(lambda _: progress.update())
 
     # smooth
     half_width = 10
@@ -266,32 +325,51 @@ def generate_pose(cur_dirs: Dict[str, str],
         rb = min(n - 1, i + half_width)
         lb = max(0, i - half_width)
         while r <= rb:
-            if mocap_to_lidar_translations[r] is not None:
-                translation_sum += mocap_to_lidar_translations[r]
-                cnt += 1
+            translation_sum += mocap_to_lidar_translations[r]
+            cnt += 1
             r += 1
         while l < lb:
-            if mocap_to_lidar_translations[l] is not None:
-                translation_sum -= mocap_to_lidar_translations[l]
-                cnt -= 1
+            translation_sum -= mocap_to_lidar_translations[l]
+            cnt -= 1
             l += 1
-        if (mocap_to_lidar_translations[i] is not None) and (cnt > 0):
-            aux.append(translation_sum / cnt)
-        else:
-            aux.append(None)
+        aux.append(translation_sum / cnt)
     mocap_to_lidar_translations = aux
 
-    index = 1
-    print('Saving Plys')
-    for mocap_points, mocap_to_lidar_translation in tqdm(zip(mocap_point_clouds, mocap_to_lidar_translations)):
-        if mocap_to_lidar_translation is None:
-            mocap_points = mocap_points[0].reshape(-1, 3)
-        else:
-            mocap_points = transformation.mocap_to_lidar(
-                mocap_points, C, translation=mocap_to_lidar_translation)
+    logger.info('Saving Plys')
+    pose_dir = cur_dirs.pose_dir
+    mocap_to_lidar_RT = np.linalg.inv(lidar_to_mocap_RT)
+    mocap_to_lidar_R = mocap_to_lidar_RT[:3, :3]
+    mocap_to_lidar_T = mocap_to_lidar_RT[:3, 3].reshape(3, )
+
+    def foo2(mocap_points, cur_translation, pose, beta, pc_filename, origin_to_root_translation):
+        mocap_points = transformation.mocap_to_lidar(
+            mocap_points, lidar_to_mocap_RT, translation=cur_translation)
+        index_str = os.path.splitext(os.path.basename(pc_filename))[0]
         smpl.generate_ply.save_ply(mocap_points, os.path.join(
-            cur_dirs.mesh_dir, '{:06d}.ply'.format(index)))
-        index += 1
+            pose_dir, '{}.ply'.format(index_str)))
+        pose[0:3] = (R.from_matrix(mocap_to_lidar_R)
+                     * R.from_rotvec(pose[0:3])).as_rotvec()
+        trans = R.from_matrix(mocap_to_lidar_R).apply(
+            origin_to_root_translation + cur_translation) + mocap_to_lidar_T
+        # 因为smpl的全局旋转的中心不是原点，所以旋转完会有一定的偏移量，这边做个补偿
+        trans += mocap_points[0] - \
+            smpl_model.get_vertices(pose, beta, trans)[0]
+        with open(os.path.join(pose_dir, '{}.json'.format(index_str)), 'w') as f:
+            d = {'beta': beta.tolist(),
+                 'pose': pose.tolist(),
+                 'trans': trans.tolist()}
+            f.write(json.dumps(d))
+
+    for mocap_points, mocap_to_lidar_translation, pose, beta, segment_filename, origin_to_root_translation in tqdm(zip(mocap_point_clouds, mocap_to_lidar_translations, poses, betas, segment_filenames, origin_to_root_translations)):
+        foo2(mocap_points, mocap_to_lidar_translation, pose,
+             beta, segment_filename, origin_to_root_translation)
+
+    # with ThreadPoolExecutor(MAX_THREAD_COUNT) as executor:
+    #     tasks = [executor.submit(foo2, mocap_points, mocap_to_lidar_translation, pose, beta, segment_filename, origin_to_root_translation)
+    #              for mocap_points, mocap_to_lidar_translation, pose, beta, segment_filename, origin_to_root_translation in
+    #              zip(mocap_point_clouds, mocap_to_lidar_translations, poses, betas, segment_filenames, origin_to_root_translations)]
+    #     for _ in tqdm(as_completed(tasks), total=len(tasks)):
+    #         pass
 
 
 def main(args):
@@ -322,7 +400,7 @@ def main(args):
         dataset_dirs['pointclouds_dir'], 'bg.pcd'))[:, :3]
 
     for index in range(start_index, end_index):
-        print('index: ' + str(index))
+        logger.info('index: {}'.format(index))
         cur_dirs = prepare_current_dirs(raw_dir, dataset_dirs, index)
         video_path = path_util.get_one_path_by_suffix(cur_dirs.raw_dir, '.mp4')
         pcap_path = path_util.get_one_path_by_suffix(cur_dirs.raw_dir, '.pcap')
@@ -332,6 +410,7 @@ def main(args):
         mocap_dir = cur_dirs.mocaps_dir
         cur_process_info = process_info[str(index)]
 
+        mocap_indexes_path = os.path.join(mocap_dir, 'mocap_indexes.npy')
         if args.gen_basic:
             img_util.video_to_images(video_path, img_dir)
             pc_util.pcap_to_pcds(pcap_path, pc_dir)
@@ -360,17 +439,28 @@ def main(args):
             pc_indexes = pc_indexes[:n_frames]
             img_indexes = img_indexes[:n_frames]
             mocap_indexes = mocap_indexes[:n_frames]
+            path_util.remove_unnecessary_frames(img_dir, img_indexes)
+            path_util.remove_unnecessary_frames(pc_dir, pc_indexes)
 
-            path_util.rearrange_frames(img_dir, img_indexes)
-            path_util.rearrange_frames(pc_dir, pc_indexes)
+            # 如果人不在划定区域内则不考虑，将相应的帧去掉
+            reserved = generate_segment(
+                pc_dir, cur_dirs.segment_dir, bg_points, cur_process_info['box'])
+            pc_indexes = pc_indexes[reserved]
+            img_indexes = img_indexes[reserved]
+            mocap_indexes = mocap_indexes[reserved]
+            path_util.remove_unnecessary_frames(img_dir, img_indexes)
+            path_util.remove_unnecessary_frames(pc_dir, pc_indexes)
+
+            np.save(mocap_indexes_path, mocap_indexes)
+
+            # 按照pedx数据集，将点云全部用ply存储
+            for pcd_filename in path_util.get_sorted_filenames_by_index(pc_dir):
+                ply_filename = pcd_filename.replace('pcd', 'ply')
+                ply.pcd_to_ply(pcd_filename, ply_filename)
+                os.remove(pcd_filename)
+
         else:
-            mocap_frame_nums = pd.read_csv(
-                path_util.get_one_path_by_suffix(mocap_dir, '_worldpos.csv')).shape[0]
-            mocap_start_index = cur_process_info['start_index']['mocap']
-            mocap_indexes = np.arange(
-                mocap_start_index - 1, mocap_frame_nums, MOCAP_FRAME_RATE // POINTCLOUD_FRAME_RATE)
-            n_frames = len(os.listdir(img_dir))
-            mocap_indexes = mocap_indexes[:n_frames]
+            mocap_indexes = np.load(mocap_indexes_path)
 
         if gen.keypoints:
             generate_keypoints(img_dir, cur_dirs.keypoints_dir, openpose_path)
@@ -379,10 +469,6 @@ def main(args):
             mask_rcnn.inference.inference(
                 img_dir, cur_dirs.bbox_dir, cur_dirs.mask_dir)
 
-        if gen.seg_pc:
-            generate_segmented_point_clouds(
-                pc_dir, cur_dirs.segmentation_dir, bg_points, cur_process_info['box'])
-
         if gen.pose:
             worldpos_csv = path_util.get_one_path_by_suffix(
                 mocap_dir, '_worldpos.csv')
@@ -390,7 +476,7 @@ def main(args):
                 mocap_dir, '_rotations.csv')
             mocap_data = mocap.MoCapData(worldpos_csv, rotation_csv)
             generate_pose(cur_dirs, mocap_data, mocap_indexes,
-                          cur_process_info, bg_points)
+                          cur_process_info)
         # project(cur_dirs, mocap.MoCapData(worldpos_csv, rotation_csv),
         #         bg_points, cur_process_info['box'], mocap_indexes)
 
@@ -401,7 +487,8 @@ if __name__ == '__main__':
     parser.add_argument('--end_index', type=int, required=True)
 
     parser.add_argument('--raw_dir', type=str, default='/xmu_gait/raw')
-    parser.add_argument('--dataset_dir', type=str, default='/xmu_gait/dataset')
+    parser.add_argument('--dataset_dir', type=str,
+                        default='/xmu_gait/dataset')
     parser.add_argument('--openpose_path', type=str,
                         default='/home/ljl/Tools/openpose')
 
@@ -412,11 +499,8 @@ if __name__ == '__main__':
     parser.add_argument('--gen_basic', action='store_true')
     parser.add_argument('--gen_keypoints', action='store_true')
     parser.add_argument('--gen_mask', action='store_true')
-    parser.add_argument('--gen_seg_pc', action='store_true')
     parser.add_argument('--gen_pose', action='store_true')
     # parser.add_argument('--write_smpl_vertices', action='store_true')
-
-    logger.info('sdfsddfsdfsdfsfsdf')
 
     args = parser.parse_args()
     if not args.log:

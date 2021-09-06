@@ -7,7 +7,6 @@ import shutil
 def get_csvs_from_bvh(bvh_path, mocap_dir):
     assert os.path.isabs(bvh_path) and os.path.isfile(bvh_path)
     assert os.path.isabs(mocap_dir) and os.path.isdir(mocap_dir)
-    os.system('bvh-converter {}'.format(bvh_path))
     os.system('bvh-converter -r {}'.format(bvh_path))
     src_dir = os.path.dirname(bvh_path)
     worldpos_csv = path_util.get_one_path_by_suffix(src_dir, '_worldpos.csv')

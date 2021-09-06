@@ -20,14 +20,9 @@ def get_sorted_filenames_by_index(dirname, isabs=True):
     return filenames
 
 
-def rearrange_frames(dirname, indexes):
+def remove_unnecessary_frames(dirname, indexes):
     filenames = os.listdir(dirname)
     assert len(filenames) > 0
-    ext = os.path.splitext(filenames[0])[1]
     for filename in filenames:
         if get_index(filename) not in indexes:
             os.remove(os.path.join(dirname, filename))
-    filenames = get_sorted_filenames_by_index(dirname)
-    for index, filename in enumerate(filenames):
-        os.rename(filename, os.path.join(
-            dirname, '{:06d}{}'.format(index + 1, ext)))

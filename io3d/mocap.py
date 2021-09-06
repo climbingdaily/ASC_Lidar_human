@@ -1,4 +1,4 @@
-from scipy.spatial.transform import Rotation as R, rotation
+from scipy.spatial.transform import Rotation as R
 
 import math
 import numpy as np
@@ -34,12 +34,10 @@ class MoCapData():
         return len(self.worldpos_df)
 
     def worldpos(self, index):
-        return transformation.rotation(np.array(self.worldpos_df.iloc[[index]].values.tolist()[0][1:]).reshape(-1, 3) / 100, self.trans)
+        return R.from_matrix(self.trans).apply(np.array(self.worldpos_df.iloc[[index]].values.tolist()[0][1:]).reshape(-1, 3) / 100)
 
     def pose(self, index):
-
         pose = []
-        import pandas as pd
         for each in self.smpl_to_mocap:
             xrot = math.radians(self.rotation_df.at[index, each + '.X'])
             yrot = math.radians(self.rotation_df.at[index, each + '.Y'])
@@ -56,6 +54,9 @@ class MoCapData():
                 zrot += -0.3
 
             pose.append(R.from_euler('zxy', [zrot, xrot, yrot]).as_rotvec())
+        # the root rotation is global, so the rotation matrix can be applied on it directly
+        pose[0] = (R.from_matrix(self.trans) *
+                   R.from_rotvec(pose[0])).as_rotvec()
         pose = np.stack(pose).flatten()
         return pose
 
@@ -65,18 +66,7 @@ class MoCapData():
         return self.worldpos(index)[0] - untranslated_root
 
     def smpl_vertices(self, index, beta=None, is_torch=False):
-        vertices = model.get_vertices(
-            self.pose(index), beta, return_numpy=not is_torch)
-        trans = self.trans
-        translation = self.translation(index)
-        if is_torch:
-            trans = torch.from_numpy(trans)
-            translation = torch.from_numpy(translation).to(vertices.device)
-        return transformation.rotation(vertices, trans) + translation
+        return model.get_vertices(self.pose(index), beta, self.translation(index), return_numpy=not is_torch)
 
     def smpl_joints_untranslated(self, index):
-        return transformation.rotation(model.get_vertices(pose=self.pose(index), return_joints=True), self.trans)
-
-    def smpl_joints(self, index):
-        smpl_joints_untranslated = self.smpl_joints_untranslated(index)
-        return smpl_joints_untranslated + self.translation(index, smpl_joints_untranslated[0])
+        return model.get_vertices(pose=self.pose(index), return_joints=True)

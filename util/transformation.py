@@ -45,18 +45,20 @@ def icp_without_rotation(source_points, target_points, target_kdtree, iteration=
     return translation
 
 
-def get_mocap_to_lidar_translation(mocap_points, lidar_points, C):
+def get_mocap_to_lidar_translation(mocap_points, lidar_points, lidar_to_mocap_rotation):
     source_points = mocap_points.astype(np.float32)
-    target_points = affine(lidar_points, C).astype(np.float32)
+    target_points = affine(
+        lidar_points, lidar_to_mocap_rotation).astype(np.float32)
     target_kdtree = pcl.PointCloud(target_points).make_kdtree_flann()
     return icp_without_rotation(source_points, target_points, target_kdtree)
 
 
-def get_mocap_to_lidar_rotation(mocap_points, lidar_points, C):
-    translation = get_mocap_to_lidar_translation(mocap_points, lidar_points, C)
+def get_mocap_to_lidar_rotation(mocap_points, lidar_points, lidar_to_mocap_rotation):
+    translation = get_mocap_to_lidar_translation(
+        mocap_points, lidar_points, lidar_to_mocap_rotation)
     source_cloud = pcl.PointCloud(
         (mocap_points + translation).astype(np.float32))
-    target_points = affine(lidar_points, C)
+    target_points = affine(lidar_points, lidar_to_mocap_rotation)
     target_cloud = pcl.PointCloud(target_points.astype(np.float32))
     icp = source_cloud.make_IterativeClosestPoint()
     rotation = icp.icp(source_cloud, target_cloud)[1]  # 4 * 4 ndarray

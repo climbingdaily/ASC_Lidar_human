@@ -7,4 +7,5 @@ def read_point_cloud(filename):
 
 
 def save_point_cloud(filename, points):
-    pcl.save(pcl.PointCloud(points.astype(np.float32)), filename, binary=True)
+    pcl.save(pcl.PointCloud(points.astype(np.float32)),
+             filename, format='pcd', binary=True)

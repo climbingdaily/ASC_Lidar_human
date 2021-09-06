@@ -150,7 +150,7 @@ class SMPL(nn.Module):
         # return joints
 
 
-def get_vertices(pose=None, beta=None, return_numpy=True, return_joints=False):
+def get_vertices(pose=None, beta=None, trans=None, return_numpy=True, return_joints=False):
 
     def get_batched_tensor(array, dim):
         if array is None:
@@ -174,6 +174,8 @@ def get_vertices(pose=None, beta=None, return_numpy=True, return_joints=False):
     if return_joints:
         res = model.get_joints(res)
     res.squeeze_(0)
+    if trans is not None:
+        res += torch.from_numpy(trans).to(res.device)
     if return_numpy:
         res = res.cpu().numpy()
     return res
