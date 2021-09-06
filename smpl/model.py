@@ -79,8 +79,6 @@ class SMPL(nn.Module):
         self.joints_idx = cfg.JOINTS_IDX
 
     def forward(self, pose, beta):
-        pose = pose.cuda()
-        beta = beta.cuda()
         device = pose.device
         batch_size = pose.shape[0]
         v_template = self.v_template[None, :].to(device)

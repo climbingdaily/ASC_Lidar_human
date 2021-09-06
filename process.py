@@ -1,14 +1,17 @@
 from collections import namedtuple
-from concurrent.futures import as_completed, ProcessPoolExecutor, ThreadPoolExecutor
-from sys import path
+from multiprocessing import Pool
+
+from scipy.sparse.construct import random
 from io3d import mocap, pcd, ply
 from scipy.spatial.transform import Rotation as R
 from smpl import model as smpl_model
 from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 from typing import Dict, List
 from util import mocap_util, path_util, pc_util, img_util, transformation
 
 import argparse
+import functools
 import json
 import logging
 import numpy as np
@@ -19,7 +22,7 @@ import smpl.generate_ply
 IMAGE_FRAME_RATE = 30
 POINTCLOUD_FRAME_RATE = 10
 MOCAP_FRAME_RATE = 90
-MAX_THREAD_COUNT = 16
+MAX_PROCESS_COUNT = 16
 MIN_PERSON_POINTS_NUM = 50
 
 logging.basicConfig(level=logging.INFO,
@@ -222,6 +225,46 @@ def generate_segment(pc_dir: str,
     #         pass
 
 
+def estimate_translation(segment_filename, mocap_index, mocap_data, beta, lidar_to_mocap_RT):
+    segment_points = ply.read_point_cloud(segment_filename)[:, : 3]
+
+    mocap_points = mocap_data.smpl_vertices(mocap_index, beta=beta)
+    mocap_to_lidar_translation = transformation.get_mocap_to_lidar_translation(
+        mocap_points, segment_points, lidar_to_mocap_RT)
+
+    # poses.append(mocap_data.pose(mocap_index))
+    # betas.append(beta)
+    # mocap_point_clouds.append(mocap_points)
+    # mocap_to_lidar_translations.append(mocap_to_lidar_translation)
+    # origin_to_root_translations.append(mocap_data.translation(mocap_index))
+    pose = mocap_data.pose(mocap_index)
+    origin_to_root_translation = mocap_data.translation(mocap_index)
+    return pose, mocap_points, mocap_to_lidar_translation, origin_to_root_translation
+
+
+def refine_translation(mocap_points, cur_translation, pose, seg_filename, origin_to_root_translation, beta, lidar_to_mocap_RT, pose_dir):
+    mocap_to_lidar_RT = np.linalg.inv(lidar_to_mocap_RT)
+    mocap_to_lidar_R = mocap_to_lidar_RT[:3, :3]
+    mocap_to_lidar_T = mocap_to_lidar_RT[:3, 3].reshape(3, )
+    mocap_points = transformation.mocap_to_lidar(
+        mocap_points, lidar_to_mocap_RT, translation=cur_translation)
+    index_str = os.path.splitext(os.path.basename(seg_filename))[0]
+    smpl.generate_ply.save_ply(mocap_points, os.path.join(
+        pose_dir, '{}.ply'.format(index_str)))
+    pose[0:3] = (R.from_matrix(mocap_to_lidar_R)
+                 * R.from_rotvec(pose[0:3])).as_rotvec()
+    trans = R.from_matrix(mocap_to_lidar_R).apply(
+        origin_to_root_translation + cur_translation) + mocap_to_lidar_T
+    # 因为smpl的全局旋转的中心不是原点，所以旋转完会有一定的偏移量，这边做个补偿
+    trans += mocap_points[0] - \
+        smpl_model.get_vertices(pose, beta, trans)[0]
+    with open(os.path.join(pose_dir, '{}.json'.format(index_str)), 'w') as f:
+        d = {'beta': beta.tolist(),
+             'pose': pose.tolist(),
+             'trans': trans.tolist()}
+        f.write(json.dumps(d))
+
+
 def generate_pose(cur_dirs: Dict[str, str],
                   mocap_data: mocap.MoCapData,
                   mocap_indexes: List[int],
@@ -237,81 +280,18 @@ def generate_pose(cur_dirs: Dict[str, str],
         cur_dirs.segment_dir)
 
     # Python中list的append操作是线程安全的，所以可以append的时候带上索引，然后按照索引排序
+    n = len(segment_filenames)
     mocap_point_clouds = []
     mocap_to_lidar_translations = []
     origin_to_root_translations = []
     poses = []
-    betas = []
     beta = np.array(cur_process_info['beta'])
 
     logger.info('Calculate MoCap to LiDAR translations')
 
-    # def foo1(segment_filename, mocap_index, index):
-    #     segment_points = ply.read_point_cloud(segment_filename)[:, : 3]
-    #     # 72 + 10 (pose + beta)
-    #     poses.append((mocap_data.pose(mocap_index), index))
-    #     betas.append((beta, index))
-
-    #     mocap_points = mocap_data.smpl_vertices(mocap_index, beta=beta)
-    #     mocap_to_lidar_translation = transformation.get_mocap_to_lidar_translation(
-    #         mocap_points, segment_points, lidar_to_mocap_rotation)
-
-    #     mocap_point_clouds.append((mocap_points, index))
-    #     mocap_to_lidar_translations.append((mocap_to_lidar_translation, index))
-    #     origin_to_root_translations.append(
-    #         (mocap_data.translation(mocap_index), index))
-
-    # with ProcessPoolExecutor(MAX_THREAD_COUNT) as executor:
-    #     with tqdm(total=len(segment_filenames)) as progress:
-    #         for index, (segment_filename, mocap_index) in enumerate(zip(segment_filenames, mocap_indexes)):
-    #             future = executor.submit(
-    #                 foo1, segment_filename, mocap_index, index)
-    #             future.add_done_callback(lambda _: progress.update())
-
-    # def sort_by_index(l):
-    #     return [x[0] for x in sorted(l, key=lambda x: x[1])]
-
-    # sort_by_index(poses)
-    # sort_by_index(betas)
-    # sort_by_index(mocap_point_clouds)
-    # sort_by_index(mocap_to_lidar_translations)
-    # sort_by_index(origin_to_root_translations)
-
-    # print(mocap_to_lidar_translations)
-
-    # with ThreadPoolExecutor(MAX_THREAD_COUNT) as executor:
-    #     tasks = [executor.submit(foo1, pc_filename, mocap_index)
-    #              for pc_filename, mocap_index in tqdm(zip(pc_filenames, mocap_indexes))]
-    #     for _ in tqdm(as_completed(tasks), total=len(tasks)):
-    #         pass
-
-    def foo1(segment_filename, mocap_index):
-        segment_points = ply.read_point_cloud(segment_filename)[:, : 3]
-        # 72 + 10 (pose + beta)
-        poses.append(mocap_data.pose(mocap_index))
-        betas.append(beta)
-
-        mocap_points = mocap_data.smpl_vertices(mocap_index, beta=beta)
-        mocap_to_lidar_translation = transformation.get_mocap_to_lidar_translation(
-            mocap_points, segment_points, lidar_to_mocap_RT)
-
-        mocap_point_clouds.append(mocap_points)
-        mocap_to_lidar_translations.append(mocap_to_lidar_translation)
-        origin_to_root_translations.append(mocap_data.translation(mocap_index))
-
-    # index = 5
-    for segment_filename, mocap_index in tqdm(zip(segment_filenames, mocap_indexes), total=len(segment_filenames)):
-        foo1(segment_filename, mocap_index)
-        # index -= 1
-        # if index == 0:
-        #     break
-
-    # with ProcessPoolExecutor(MAX_THREAD_COUNT) as executor:
-    #     with tqdm(total=len(segment_filenames)) as progress:
-    #         for index, (segment_filename, mocap_index) in enumerate(zip(segment_filenames, mocap_indexes)):
-    #             future = executor.submit(
-    #                 foo1, segment_filename, mocap_index, index)
-    #             future.add_done_callback(lambda _: progress.update())
+    with Pool(MAX_PROCESS_COUNT) as p:
+        poses, mocap_point_clouds, mocap_to_lidar_translations, origin_to_root_translations = zip(*p.starmap(functools.partial(
+            estimate_translation, mocap_data=mocap_data, beta=beta, lidar_to_mocap_RT=lidar_to_mocap_RT), tqdm(list(zip(segment_filenames, mocap_indexes)), total=n)))
 
     # smooth
     half_width = 10
@@ -336,40 +316,10 @@ def generate_pose(cur_dirs: Dict[str, str],
     mocap_to_lidar_translations = aux
 
     logger.info('Saving Plys')
-    pose_dir = cur_dirs.pose_dir
-    mocap_to_lidar_RT = np.linalg.inv(lidar_to_mocap_RT)
-    mocap_to_lidar_R = mocap_to_lidar_RT[:3, :3]
-    mocap_to_lidar_T = mocap_to_lidar_RT[:3, 3].reshape(3, )
 
-    def foo2(mocap_points, cur_translation, pose, beta, pc_filename, origin_to_root_translation):
-        mocap_points = transformation.mocap_to_lidar(
-            mocap_points, lidar_to_mocap_RT, translation=cur_translation)
-        index_str = os.path.splitext(os.path.basename(pc_filename))[0]
-        smpl.generate_ply.save_ply(mocap_points, os.path.join(
-            pose_dir, '{}.ply'.format(index_str)))
-        pose[0:3] = (R.from_matrix(mocap_to_lidar_R)
-                     * R.from_rotvec(pose[0:3])).as_rotvec()
-        trans = R.from_matrix(mocap_to_lidar_R).apply(
-            origin_to_root_translation + cur_translation) + mocap_to_lidar_T
-        # 因为smpl的全局旋转的中心不是原点，所以旋转完会有一定的偏移量，这边做个补偿
-        trans += mocap_points[0] - \
-            smpl_model.get_vertices(pose, beta, trans)[0]
-        with open(os.path.join(pose_dir, '{}.json'.format(index_str)), 'w') as f:
-            d = {'beta': beta.tolist(),
-                 'pose': pose.tolist(),
-                 'trans': trans.tolist()}
-            f.write(json.dumps(d))
-
-    for mocap_points, mocap_to_lidar_translation, pose, beta, segment_filename, origin_to_root_translation in tqdm(zip(mocap_point_clouds, mocap_to_lidar_translations, poses, betas, segment_filenames, origin_to_root_translations)):
-        foo2(mocap_points, mocap_to_lidar_translation, pose,
-             beta, segment_filename, origin_to_root_translation)
-
-    # with ThreadPoolExecutor(MAX_THREAD_COUNT) as executor:
-    #     tasks = [executor.submit(foo2, mocap_points, mocap_to_lidar_translation, pose, beta, segment_filename, origin_to_root_translation)
-    #              for mocap_points, mocap_to_lidar_translation, pose, beta, segment_filename, origin_to_root_translation in
-    #              zip(mocap_point_clouds, mocap_to_lidar_translations, poses, betas, segment_filenames, origin_to_root_translations)]
-    #     for _ in tqdm(as_completed(tasks), total=len(tasks)):
-    #         pass
+    with Pool(MAX_PROCESS_COUNT) as p:
+        p.starmap(functools.partial(refine_translation, beta=beta, lidar_to_mocap_RT=lidar_to_mocap_RT, pose_dir=cur_dirs.pose_dir), tqdm(
+            list(zip(mocap_point_clouds, mocap_to_lidar_translations, poses, segment_filenames, origin_to_root_translations))))
 
 
 def main(args):
