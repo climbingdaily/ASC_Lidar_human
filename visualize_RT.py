@@ -128,8 +128,8 @@ if __name__ == "__main__":
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    pcdroot = 'E:\\SCSC_DATA\HumanMotion\\0828\\20210828haiyunyuan002_pcap_to_txt_0_to_1600'
-    pcd_floor = o3d.io.read_point_cloud(os.path.join(pcdroot, 'color_map.pcd'))
+    pcdroot = 'E:\\SCSC_DATA\\HumanMotion\\0913'
+    pcd_floor = o3d.io.read_point_cloud(os.path.join(pcdroot, 'colormap.pcd'))
     # pcd_wall1 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙1.pcd'))
     # pcd_wall2 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙2.pcd'))
     # pcd_room = o3d.io.read_point_cloud(os.path.join(pcdroot, '硕士间.pcd'))
@@ -250,7 +250,7 @@ if __name__ == "__main__":
             faces = np.zeros((face_number, 3), dtype=int)
 
             for j in range(9, 9+vertex_number):
-                vertices[j - 9] = np.asarray(plylines[j].strip().split(' '), dtype=float) + np.array([0, 0, 0.2])
+                vertices[j - 9] = np.asarray(plylines[j].strip().split(' '), dtype=float) + np.array([0, 0, 0.25])
 
             mesh.vertices = Vector3dVector(vertices)
             mesh.compute_vertex_normals()
@@ -265,7 +265,7 @@ if __name__ == "__main__":
                 for f in range(9+vertex_number, 9+vertex_number + face_number):
                     faces[f - 9 - vertex_number] = np.asarray(plylines[f].strip().split(' '), dtype=int)[1:]
                 mesh.triangles = Vector3iVector(faces)
-                mesh.paint_uniform_color([1., 1., 1.])
+                mesh.paint_uniform_color([75/255, 145/255, 183/255])
                 vis.add_geometry(mesh)
                 o3dcallback(camera_pose)
                 vis.poll_events()

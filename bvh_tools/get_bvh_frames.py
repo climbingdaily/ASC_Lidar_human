@@ -32,16 +32,18 @@ frames = mocap.frames[:frame_num]
 dirname = os.path.dirname(joints_file)
 # file_name = os.path.basename(joints_file)
 file_name = Path(joints_file).stem
-save_file = os.path.join(dirname, file_name + '_' + str(frame_num) + '.bvh')
+save_file = os.path.join(dirname, file_name + '_' + str(frame_num//5) + '.bvh')
 
+key_frame_num = 2304 # 时间标定帧
 with open(save_file, 'w') as f:
     f.write(header)
     f.write('MOTION\n')
-    f.write('Frames: ' + str(frame_num) + '\n')
-    f.write('Frame Time: ' + str(frame_time) + '\n')
+    f.write('Frames: ' + str(frame_num//5) + '\n')
+    f.write('Frame Time: ' + str(frame_time*5) + '\n')
     for i, frame in enumerate(frames):
         if i > frame_num:
             break
-        for s in frame:
-            f.write(s + ' ')
-        f.write('\n')
+        if abs(i - key_frame_num) % 5 == 0: 
+            for s in frame:
+                f.write(s + ' ')
+            f.write('\n')

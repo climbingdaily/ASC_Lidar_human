@@ -1,7 +1,6 @@
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
 import numpy as np
-from bvh_tools.bvh_tool import Bvh
 import sys
 import os
 
@@ -14,11 +13,11 @@ def toRt(r, t):
     r = np.concatenate((r, share_vector), axis=0)
     return r
 
-def save_in_same_dir(file_path, data, ss):
+def save_in_same_dir(file_path, data, ss, field_fmts = '%.6f'):
     dirname = os.path.dirname(file_path)
     file_name = Path(file_path).stem
     save_file = os.path.join(dirname, file_name + ss + '.txt')
-    np.savetxt(save_file, data, fmt='%.6f')
+    np.savetxt(save_file, data, fmt=field_fmts)
     print('save file in: ', save_file)
 
 if __name__ == '__main__':
@@ -36,22 +35,30 @@ if __name__ == '__main__':
             transfrom_list.append(np.loadtxt(sys.argv[i], dtype=float))
     lidar = np.loadtxt(lidar_file, dtype=float)
     rots = np.zeros(shape=(lidar.shape[0],4,4))
-    
-    for t in transfrom_list:
-        print(t)
 
+    sumT = np.eye(4)    
+    for t in transfrom_list:
+        sumT = np.matmul(t, sumT)
+        print(t)
+    print('Sum Rt:', sumT)
+    if len(transfrom_list) > 1:
+        save_rt_path = os.path.join(os.path.dirname(lidar_file), 'sumRT.txt')
+        np.savetxt(save_rt_path, sumT, fmt='%.6f')
 
     # 四元数到旋转矩阵
     for i in range(lidar.shape[0]):
         i_frame_R = R.from_quat(lidar[i, 4: 8]).as_matrix()  #3*3
         rots[i] = toRt(i_frame_R, lidar[i, 1:4])   #4*4
 
-    for tt in transfrom_list:
-        rots = np.matmul(tt, rots.T).T
+    # for tt in transfrom_list:
+    #     rots = np.matmul(tt, rots.T).T
+    
+    rots = np.matmul(sumT, rots.T).T
 
     # 旋转矩阵到四元数
     for i in range(lidar.shape[0]):
         lidar[i, 1:4] = rots[i, :3, 3] #平移量
         lidar[i, 4:8] = R.from_matrix(rots[i, :3, :3]).as_quat() #四元数
     # save new traj
-    save_in_same_dir(lidar_file, lidar, '_变换后的轨迹')
+    field_fmts = ['%d', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.3f']
+    save_in_same_dir(lidar_file, lidar, '_变换后的轨迹', field_fmts = field_fmts)

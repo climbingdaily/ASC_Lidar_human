@@ -17,11 +17,11 @@ mocap_init = np.array([
 # mocap_init = R.from_matrix(mocap_init[:3,:3])
 
 # 时间同步帧
-lidar_key = 457 
-mocap_key = 1513
+lidar_key = 420 
+mocap_key = 460
 
 # mocap的帧率试试lidar的备注
-frame_scale = 5 # mocap是100Hz, lidar是20Hz
+frame_scale = 1 # mocap是100Hz, lidar是20Hz
 
 def toRt(r, t):
     '''
@@ -251,20 +251,20 @@ def save_in_same_csv(file_path, data, ss):
     save_file = os.path.join(dirname, file_name + ss + '.csv')
     data.to_csv(save_file)
     print('save csv in: ', save_file)
-
 def save_in_same_dir(file_path, data, ss):
     dirname = os.path.dirname(file_path)
     file_name = Path(file_path).stem
     save_file = os.path.join(dirname, file_name + ss + '.txt')
-    np.savetxt(save_file, data, fmt='%.6f')
+    field_fmts = ['%d', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f']
+    np.savetxt(save_file, data, fmt=field_fmts)
     print('save traj in: ', save_file)
 
 if __name__ == '__main__':
     if len(sys.argv) < 4:
         print('请输入 [*pos.csv] [*rot.csv] [*lidar_traj.txt]')
-        pospath = "e:\\SCSC_DATA\HumanMotion\\0828\mocap02\\haiyunyuandaiyudi002_daiyudi_7223_pos.csv"
-        rotpath = "e:\\SCSC_DATA\HumanMotion\\0828\mocap02\\haiyunyuandaiyudi002_daiyudi_7223_rot.csv"
-        lidar_file = "e:\\SCSC_DATA\HumanMotion\\0828\\20210828haiyunyuan002_pcap_to_txt_0_to_1600\\traj_with_timestamp_变换后的轨迹.txt"
+        pospath = "e:\\SCSC_DATA\HumanMotion\\0913\\001\\mocap\\0913daiyudi001_4672_pos.csv"
+        rotpath = "e:\\SCSC_DATA\HumanMotion\\0913\\001\\mocap\\0913daiyudi001_4672_rot.csv"
+        lidar_file = "e:\\SCSC_DATA\HumanMotion\\0913\\001\\lidar_traj_变换后的轨迹.txt"
         # in_file = 'sys.argv[4]'
         # ex_file = 'sys.argv[5]'
         # dist_file = 'sys.argv[5]'
@@ -301,8 +301,8 @@ if __name__ == '__main__':
     times_plot = np.linspace(times[0], times[-1], int(times[-1] - times[0]) + 1)
     quat_plot = spline(times_plot).as_quat()
 
-    trajs = lidar[:, 1:4]
-    trajs_plot = []
+    trajs = lidar[:, 1:4] # 待拟合轨迹
+    trajs_plot = [] # 拟合后轨迹
     segment = 20
     for i in range(0, lidar.shape[0], segment):
         s_index = i
@@ -313,17 +313,17 @@ if __name__ == '__main__':
         if i ==0:
             fp = np.polyfit(times[s_index:e_index],
                             trajs[s_index:e_index], 4)  # 分段拟合轨迹
-            for j in times_plot[times[i]:times[e_index-1] + 1]:
+            for j in times_plot[times[i] - times[0] : times[e_index-1] - times[0] + 1]:
                 trajs_plot.append(np.polyval(fp, j))
         else:
             fp = np.polyfit(times[s_index-1:e_index],
                             trajs[s_index-1:e_index], 4)  # 分段拟合轨迹
-            for j in times_plot[times[i-1] + 1:times[e_index-1] + 1]:
+            for j in times_plot[times[i-1] + 1 - times[0]:times[e_index-1] + 1 - times[0]]:
                 trajs_plot.append(np.polyval(fp, j))
     trajs_plot = np.asarray(trajs_plot)
     for i in range(lidar.shape[0]):
         # 保留原来的轨迹
-        trajs_plot[times[i]] = trajs[i] 
+        trajs_plot[times[i] - times[0]] = trajs[i] 
     lidar = np.concatenate((times_plot.reshape(-1,1), trajs_plot, quat_plot), axis=1)
     # 2. 输入lidar中对应的帧和mocap中对应的帧, 求得两段轨迹中的公共部分
     lidar_key = lidar_key - int(lidar[0,0]) 
@@ -397,22 +397,30 @@ if __name__ == '__main__':
     os.makedirs(smpl_out_dir, exist_ok=True)
     smpl = SMPL()
     bar = tqdm(range(lidar_end - lidar_start + 1))
+
     for count in bar:
         vertices = smpl(torch.from_numpy(get_pose_from_bvh(
             new_rot_csv, count, False)).unsqueeze(0).float(), torch.zeros((1, 10)))
         vertices = vertices.squeeze().cpu().numpy()
+
         translation = lidar[count + lidar_start, 1:4]
+        rot = R.from_quat(lidar[count + lidar_start, 4: 8]).as_matrix()
+        if count == 0:
+            rot_0 = R.from_quat(lidar[lidar_start, 4: 8]).as_matrix()
+            mocap_pos = np.matmul(mocap_init[:3, :3], new_pos[0])
+            m_to_l = mocap_pos - translation
+            m_to_l = np.matmul(np.linalg.inv(rot_0), m_to_l)
         vertices = np.matmul(mocap_init[:3, :3], vertices.T)
-        mocap_pos = np.matmul(mocap_init[:3, :3], new_pos[count])
         # vertices = np.matmul(mocap_to_lidar[:3, :3], vertices).T + translation
-        # vertices = vertices.T + translation + np.array([0, 0.1, 0.06])
-        vertices = vertices.T  + mocap_pos
+        vertices = vertices.T + translation + np.matmul(rot, m_to_l) # 初始化的偏移量需要乘上lidar的旋转矩阵
+        # vertices = vertices.T  + mocap_pos # 直接使用mocap的轨迹
+        
         ply_save_path = os.path.join(smpl_out_dir, str(count) + '_smpl.ply')
         save_ply(vertices,ply_save_path)
         bar.set_description("Save number %d/%d ply in " % (count, lidar_end - lidar_start))
     print('SMPL saved in: ', smpl_out_dir)
 
-    # 5. 保存pose
+    # 4. 保存pose
     save_in_same_csv(rotpath, new_rot_csv, '_trans_RT')
     save_in_same_dir(lidar_file, lidar[lidar_start:lidar_end+1], '_与mocap重叠部分') #保存有效轨迹
     
