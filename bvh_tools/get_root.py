@@ -25,29 +25,33 @@ def loadjoint(frames, joint_number, frame_time=0.0333333):
     save_joint = np.concatenate((frame_number, joint, rot, frame_time), axis=-1)
     return save_joint
 
+def get_mocap_root(bvh_file, save_root = True):
+    with open(bvh_file) as f:
+        mocap = Bvh(f.read())
 
-# 读取文件
-if len(sys.argv) == 2:
-    joints_file = sys.argv[1]
-else:
-    joints_file = "e:\\SCSC_DATA\\HumanMotion\\0913\\001\\mocap\\0913daiyudi001_4672.bvh"
+    #读取数据
+    frame_time = mocap.frame_time
+    frames = mocap.frames
+    frames = np.asarray(frames, dtype='float32')
 
-with open(joints_file) as f:
-    mocap = Bvh(f.read())
+    root = loadjoint(frames, 0, frame_time)  # 单位：米
 
-#读取数据
-frame_time = mocap.frame_time
-frames = mocap.frames
-frames = np.asarray(frames, dtype='float32')
+    # 保存文件
+    if save_root:
+        dirname = os.path.dirname(bvh_file)
+        # file_name = os.path.basename(bvh_file)
+        file_name = Path(bvh_file).stem
+        save_file = os.path.join(dirname, file_name + '_root.txt')
+        field_fmts = ['%d', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.3f']
+        np.savetxt(save_file, root, fmt=field_fmts)
+        print('save root in: ', save_file)
+    return root
 
-root = loadjoint(frames, 0, frame_time)  # 单位：米
+if __name__ == '__main__':
+    # 读取文件
+    if len(sys.argv) == 2:
+        bvh_file = sys.argv[1]
+    else:
+        bvh_file = "e:\\SCSC_DATA\\HumanMotion\\0913\\001\\mocap\\0913daiyudi001_4672.bvh"
 
-# 保存文件
-dirname = os.path.dirname(joints_file)
-# file_name = os.path.basename(joints_file)
-file_name = Path(joints_file).stem
-save_file = os.path.join(dirname, file_name + '_root.txt')
-field_fmts = ['%d', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.3f']
-np.savetxt(save_file, root, fmt=field_fmts)
-print('save root in: ', save_file)
-#python get_root.py [csv_file_path]
+    root = get_mocap_root(bvh_file, save_root=True)

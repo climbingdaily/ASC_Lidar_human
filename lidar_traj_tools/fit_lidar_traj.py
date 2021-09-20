@@ -13,13 +13,7 @@ def save_in_same_dir(file_path, data, ss):
     np.savetxt(save_file, data, fmt=field_fmts)
     print('save traj in: ', save_file)
 
-
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print('请输入 [*lidar_traj.txt]')
-        lidar_file = "/media/daiyudi/3T/SCSC_DATA/HumanMotion/0913/001/20210913daiyudi01_pcap_to_txt_2930_to_3000/traj_with_timestamp_new1.txt"
-    else:
-        lidar_file = sys.argv[1]
+def fitLidarTraj(lidar_file):
     # 1. 读取数据
     lidar = np.loadtxt(lidar_file, dtype=float)
 
@@ -85,8 +79,18 @@ if __name__ == '__main__':
     #     # 保留原来的轨迹
     #     trajs_plot[times[i] - times[0]] = trajs[i]
     frame_id = np.arange(trajs_plot.shape[0]).astype(np.int64) + int(lidar[0,0])
-    lidar = np.concatenate(
+    fitLidar = np.concatenate(
         (frame_id.reshape(-1, 1), trajs_plot, quat_plot, fit_time.reshape(-1,1)), axis=1)
 
     # 4. 保存轨迹
-    save_in_same_dir(lidar_file, lidar, '_afterFit')  # 保存有效轨迹
+    save_in_same_dir(lidar_file, fitLidar, '_afterFit')  # 保存有效轨迹
+    return fitLidar
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print('请输入 [*lidar_traj.txt]')
+        lidar_file = "/media/daiyudi/3T/SCSC_DATA/HumanMotion/0913/001/20210913daiyudi01_pcap_to_txt_2930_to_3000/traj_with_timestamp_new1.txt"
+    else:
+        lidar_file = sys.argv[1]
+    fitLidar = fitLidarTraj(lidar_file)
