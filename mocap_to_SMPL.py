@@ -8,7 +8,8 @@ import os
 from smpl.smpl import SMPL
 from smpl.skele2smpl import get_pose_from_bvh
 from smpl.generate_ply import save_ply
-
+from multiprocessing.dummy import Pool, Process
+import time
 _mocap_init = np.array([
     [-1, 0, 0, 0],
     [0, 0, 1, 0], 
@@ -102,6 +103,7 @@ def get_overlap(lidar, mocap, lidar_key, mocap_key, mocap_frame_time = 0.01, sav
     return _lidar, _mocap_id
 
 def register_mocap(mocap_sync_id, lidar_sync, rot_data, pos_data, mocap_init = _mocap_init):
+    assert mocap_sync_id.shape[0] == lidar_sync.shape[0]
     lidar_first = R.from_quat(lidar_sync[0, 4: 8]).as_matrix() #第一帧的矩阵
     mocap_first = R.from_euler('yxz', rot_data[mocap_sync_id[0], 1:4], degrees=True).as_matrix() #第一帧的旋转矩阵
     mocap_first = np.matmul(mocap_init[:3,:3], mocap_first) #第一帧的旋转矩阵，乘上 mocap坐标系 -> lidar坐标系的变换矩阵
@@ -144,7 +146,7 @@ def register_mocap(mocap_sync_id, lidar_sync, rot_data, pos_data, mocap_init = _
             # R_ijj = np.matmul(mocap_to_lidar[:3,:3], R_ijj) # mocap->lidar 配准旋转矩阵
             # R_ijj = np.matmul(mocap_init[:3,:3], R_ijj)  
             # new_rot[i, j*3 + 1:j*3 + 4] = R.from_matrix(R_ijj).as_euler('yxz', degrees=True)
-        return new_pos, new_rot, poses
+    return new_pos, new_rot, poses
 
 def rot_to_smpl(rotpath, new_rot, lidar_sync, mocap_init = _mocap_init):
     import torch
@@ -158,29 +160,45 @@ def rot_to_smpl(rotpath, new_rot, lidar_sync, mocap_init = _mocap_init):
     os.makedirs(smpl_out_dir, exist_ok=True)
     smpl = SMPL()
     sync_shape = new_rot.shape[0]
-    bar = tqdm(range(sync_shape))
 
-    for count in bar:
+    rot_0 = R.from_quat(lidar_sync[0, 4: 8]).as_matrix()
+    mocap_pos = np.matmul(mocap_init[:3, :3], new_pos[0])
+    m_to_l = mocap_pos - lidar_sync[0, 1:4]
+    m_to_l = np.matmul(np.linalg.inv(rot_0), m_to_l)
+    lidar_first_inv = R.from_quat(lidar_sync[0, 4:8]).inv()
+    smpl_models = []
+
+    time1 = time.time()
+    for count in range(sync_shape):
         vertices = smpl(torch.from_numpy(get_pose_from_bvh(
             new_rot_csv, count, False)).unsqueeze(0).float(), torch.zeros((1, 10)))
         vertices = vertices.squeeze().cpu().numpy()
 
         translation = lidar_sync[count, 1:4]
-        rot = R.from_quat(lidar_sync[count, 4: 8]).as_matrix()
-        if count == 0:
-            rot_0 = R.from_quat(lidar_sync[0, 4: 8]).as_matrix()
-            mocap_pos = np.matmul(mocap_init[:3, :3], new_pos[0])
-            m_to_l = mocap_pos - translation
-            m_to_l = np.matmul(np.linalg.inv(rot_0), m_to_l)
+        rot = (lidar_first_inv * R.from_quat(lidar_sync[count, 4: 8])).as_matrix()
         vertices = np.matmul(mocap_init[:3, :3], vertices.T)
         # vertices = np.matmul(mocap_to_lidar[:3, :3], vertices).T + translation
         vertices = vertices.T + translation + np.matmul(rot, m_to_l) # 初始化的偏移量需要乘上lidar的旋转矩阵
         # vertices = vertices.T  + mocap_pos # 直接使用mocap的轨迹
-        
+        smpl_models.append(vertices)
+        print("\r Processed number %d/%d ply. " % (count, sync_shape), end="", flush=True)
+
+    time2 = time.time()
+    print(f'转换SMPL耗时 {time2- time1} s.')
+
+    def save_smpl(count):
         ply_save_path = os.path.join(smpl_out_dir, str(count) + '_smpl.ply')
-        save_ply(vertices,ply_save_path)
-        bar.set_description("Save number %d/%d ply in " % (count, lidar_sync.shape[0]))
-    print('SMPL saved in: ', smpl_out_dir)
+        save_ply(smpl_models[count], ply_save_path)
+        print(f'\rSave ply in {ply_save_path}', end="", flush=True)
+
+    pool = Pool(8)
+    pool.map(save_smpl, np.arange(sync_shape).tolist())
+    pool.close()
+    pool.join()
+    time3 = time.time()
+    print()
+
+    print(f'SMPL saved in: {smpl_out_dir}. 保存PLY耗时 {(time3- time2):.2f} s.')
     return new_rot_csv
 
 if __name__ == '__main__':
