@@ -74,16 +74,33 @@ def fitLidarTraj(lidar_file):
         for j in fit_time[fs: fe]:
             trajs_plot.append(np.polyval(fp, j))
 
-    trajs_plot = np.asarray(trajs_plot)
-    # for i in range(lidar.shape[0]):
-    #     # 保留原来的轨迹
-    #     trajs_plot[times[i] - times[0]] = trajs[i]
-    frame_id = np.arange(trajs_plot.shape[0]).astype(np.int64) + int(lidar[0,0])
+
+    
+    trajs_save = []
+    quat_save = []
+    save_old = False
+    if save_old:
+        for i, t in enumerate(times):
+            # 仅保留原来的轨迹
+            old_id = np.where(fit_time == t)[0][0]
+            trajs_save.append(trajs_plot[old_id])
+            quat_save.append(quat_plot[old_id])
+        save_time = times
+    else:
+        save_time = fit_time
+        trajs_save = trajs_plot
+        quat_save = quat_plot
+
+
+    trajs_save = np.asarray(trajs_save)
+    quat_save = np.asarray(quat_save)
+
+    frame_id = np.arange(trajs_save.shape[0]).astype(np.int64) + int(lidar[0,0])
     fitLidar = np.concatenate(
-        (frame_id.reshape(-1, 1), trajs_plot, quat_plot, fit_time.reshape(-1,1)), axis=1)
+        (frame_id.reshape(-1, 1), trajs_save, quat_save, save_time.reshape(-1,1)), axis=1)
 
     # 4. 保存轨迹
-    save_in_same_dir(lidar_file, fitLidar, '_afterFit')  # 保存有效轨迹
+    save_in_same_dir(lidar_file, fitLidar, '_filt')  # 保存有效轨迹
     return fitLidar
 
 

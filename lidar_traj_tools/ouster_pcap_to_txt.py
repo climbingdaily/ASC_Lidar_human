@@ -43,7 +43,7 @@ def pcap_to_txt(source: client.PacketSource,
         os.makedirs(txt_dir)
 
     field_names = 'TIMESTAMP (ns), RANGE (mm), SIGNAL, NEAR_IR, REFLECTIVITY, X (mm), Y (mm), Z (mm)'
-    field_fmts = ['%.6f', '%.6f', '%.6f', '%d', '%.6f', '%d']
+    field_fmts = ['%.6f', '%.6f', '%.6f', '%d', '%.6f', '%d', '%d']
 
     # [doc-stag-pcap-to-csv]
     # precompute xyzlut to save computation in a loop
@@ -88,12 +88,17 @@ def pcap_to_txt(source: client.PacketSource,
                 continue
             valid.append(i)
         if len(valid) > 20000:
-            save_frame = frame_data[valid][:, [0, 1, 2, 4, 7, 8]]   #Point:0 Point:1 Point:2 Reflectivity Timestamp Channel
+            save_frame = frame_data[valid][:, [0, 1, 2, 4, 7, 8, 5]]   #Point:0 Point:1 Point:2 Reflectivity Timestamp Channel
             save_frame[:, 4] = save_frame[:, 4] / 1e9       # nano second -> second
             order = np.argsort(save_frame[:, 4]).tolist()      # 以时间进行排序
             save_frame = save_frame[order] 
+            # np.savetxt(save_path, save_frame, fmt=field_fmts)
+            
+            txt_name = f'{save_frame[0,4]:.3f}'.replace('.', '_') + '.txt'
+            save_path = os.path.join(txt_dir, txt_name)
             np.savetxt(save_path, save_frame, fmt=field_fmts)
-            print(f'write frame #{idx}, to file: {save_path}')
+            
+            print(f'\rwrite frame #{idx}, to file: {save_path}', end="", flush=True)
             
         
 if __name__ == '__main__':
@@ -115,5 +120,5 @@ if __name__ == '__main__':
     from pathlib import Path
     dir_name = os.path.dirname(pcap_path)
     file_name = Path(pcap_path).stem
-    dir_name = os.path.join(dir_name, file_name + '_pcap_to_txt')
+    dir_name = os.path.join(dir_name, file_name + '_frames')
     pcap_to_txt(source, metadata, num=frame_num, txt_dir=dir_name)

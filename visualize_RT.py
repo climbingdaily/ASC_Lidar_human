@@ -7,6 +7,7 @@ import os
 import pandas as pd  
 from bvh_tools.bvh_tool import Bvh
 from visualization.Timer import Timer
+import json
 # sys.path.insert(0, './')
 # sys.path.insert(1, '../')
 
@@ -21,10 +22,69 @@ Vector3iVector = o3d.utility.Vector3iVector
 Vector2iVector = o3d.utility.Vector2iVector
 TriangleMesh = o3d.geometry.TriangleMesh
 
+
+
+def change_background_to_black(vis):
+    opt = vis.get_render_option()
+    opt.background_color = np.asarray([0, 0, 0])
+    return False
+
+def load_render_option(vis):
+    vis.get_render_option().load_from_json(
+        "../../test_data/renderoption.json")
+    return False
+
+def capture_depth(vis):
+    depth = vis.capture_depth_float_buffer()
+    plt.imshow(np.asarray(depth))
+    plt.show()
+    return False
+
+def capture_image(vis):
+    image = vis.capture_screen_float_buffer()
+    plt.imshow(np.asarray(image))
+    plt.show()
+    return False
+
+PAUSE = False
+DESTROY = False
+REMOVE = False
+def pause_callback(vis):
+    global PAUSE
+    PAUSE = not PAUSE
+    print('Pause', PAUSE)
+    return False
+
+def destroy_callback(vis):
+    global DESTROY
+    DESTROY = not DESTROY
+    return False
+
+def remove_scene_geometry(vis, scene):
+    global REMOVE
+    REMOVE = not REMOVE
+    return False
+
+# key_to_callback = {}
+# key_to_callback[ord("K")] = change_background_to_black
+# key_to_callback[ord("R")] = load_render_option
+# key_to_callback[ord(",")] = capture_depth
+# key_to_callback[ord(".")] = capture_image
+# key_to_callback[ord("T")] = pause_vis
+# o3d.visualization.draw_geometries_with_key_callbacks([pcd], key_to_callback)
+
 # vis = o3d.visualization.Visualizer()
 vis = o3d.visualization.VisualizerWithKeyCallback()
+vis.register_key_callback(ord(' '), pause_callback)
+vis.register_key_callback(ord("D"), destroy_callback)
+vis.register_key_callback(ord("V"), remove_scene_geometry)
 # vis.register_key_callback(ord('A'), o3d_callback_rotate)
-vis.create_window(window_name='RT', width=2096, height=1024)
+# vis.create_window(window_name='RT', width=1920, height=1080)
+vis.create_window(window_name='RT', width=1280, height=720)
+
+def crop_scene(kdtree, scene_pcd, position):
+    [_, idx, _] = kdtree.search_radius_vector_3d(position, radius = 1.2)
+    return scene_pcd.select_by_index(idx)
 
 def toRt(r, t):
     '''
@@ -62,7 +122,6 @@ camera = {
   'cx': 0.,
   'cy': 0.5,
   'cz': 3.}
-
 
 def init_camera(camera_pose):
     ctr = vis.get_view_control()
@@ -105,11 +164,25 @@ def o3dcallback(camera_pose=None):
     print(camera_pose)
     init_camera(camera_pose)
 
+def load_scene(pcd_path):
+    scene_pcd = o3d.io.read_point_cloud(os.path.join(pcd_path, 'rockclimbing_scene.pcd'))
+    normals = np.loadtxt(os.path.join(pcd_path, 'scene_normals.txt'))
+    scene_pcd.normals = o3d.utility.Vector3dVector(normals)
+    # scene_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.10, max_nn=80))
+    # np.savetxt(os.path.join(pcd_path, 'scene_normals.txt'), np.asarray(scene_pcd.normals), fmt='%.6f')
+    kdtree = o3d.geometry.KDTreeFlann(scene_pcd)
+    scene_pcd.voxel_down_sample(voxel_size=0.02)
+    return scene_pcd, kdtree
+
 if __name__ == "__main__":
+    
+    lidar_file = "E:\\SCSC_DATA\HumanMotion\\1022\\lidar_trajectory_synced.txt"
+    plydir = 'E:\\SCSC_DATA\HumanMotion\\1022\\SMPL\\rockclimbing_step_1'
+    pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\1022'
+
     if len(sys.argv) < 2:
-        key = '-l'
-        lidar_file = "E:\\SCSC_DATA\HumanMotion\\0828\\20210828haiyunyuan002_pcap_to_txt_0_to_1600\\traj_with_timestamp_变换后的轨迹.txt"
-        plydir = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\mocap_csv\SMPL\\02_with_lidar_rot"
+        key = '-m'
+
     else:
         key = sys.argv[1]
         if key == '-l':
@@ -121,6 +194,8 @@ if __name__ == "__main__":
             rot_file = sys.argv[3]
         elif key == '-m':
             plydir = sys.argv[2]
+            if len(sys.argv) >=4:
+                plydir2 = sys.argv[3]
             # lidar_file = sys.argv[3]
         else:
             print('python visualize_RT.py [-l] [lidar_traj_path]')
@@ -128,18 +203,10 @@ if __name__ == "__main__":
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    pcdroot = 'E:\\SCSC_DATA\\HumanMotion\\0913'
-    pcd_floor = o3d.io.read_point_cloud(os.path.join(pcdroot, 'colormap.pcd'))
-    # pcd_wall1 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙1.pcd'))
-    # pcd_wall2 = o3d.io.read_point_cloud(os.path.join(pcdroot, '墙2.pcd'))
-    # pcd_room = o3d.io.read_point_cloud(os.path.join(pcdroot, '硕士间.pcd'))
-    geometies.append(pcd_floor)
-    # geometies.append(pcd_wall1)
-    # geometies.append(pcd_wall2)
-    # geometies.append(pcd_room)
-
-    for g in geometies:
-        vis.add_geometry(g)
+    scene_pcd, kdtree = load_scene(pcd_dir)
+    start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0])
+    positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
+    vis.add_geometry(scene_pcd)
     if key == '-l':
         rt_file = np.loadtxt(lidar_file, dtype=float)        
         R_init = R.from_quat(rt_file[0, 4: 8]).as_matrix()  #3*3
@@ -214,8 +281,15 @@ if __name__ == "__main__":
             geometies.append(line_pcd)
     elif key == '-m':
         meshfiles = os.listdir(plydir)
+        ply_list = np.asarray([i.split('_')[0] for i in meshfiles], dtype=np.int64)
+        ply_list.sort()
+        # sort meshfiles
+
+        if len(sys.argv) >= 4:
+            meshfiles_compare = os.listdir(plydir2)
         mesh = TriangleMesh()
-        imagedir = os.path.join(plydir, 'image')
+        mesh_compare = TriangleMesh()
+        imagedir = plydir + '_render_images'
         os.makedirs(imagedir, exist_ok=True)
 
         # rt_file = np.loadtxt(lidar_file, dtype=float)        
@@ -236,11 +310,27 @@ if __name__ == "__main__":
         #                         [0, 1, 0, 4.36933],
         #                         [0, 0, 0, 1]])
         # camera_init = np.matmul(camera_init, _init_)
-        for i in range(len(meshfiles) - 1):
-            name = str(i)+'_smpl.ply'
+
+        with open('.\\vertices\\all_new.json') as f:
+            all_vertices = json.load(f)
+        back = all_vertices['back_new']
+        left_heel = all_vertices['left_heel']
+        left_toe = all_vertices['left_toe']
+        right_heel = all_vertices['right_heel']
+        right_toe = all_vertices['right_toe']
+
+        grid = o3d.geometry.PointCloud()
+        grid_list = []
+        from util.segmentation import Segmentation
+        initialized = False
+        for i, idx in enumerate(ply_list):
+            name = str(idx)+'_smpl.ply'
             print('name', name)
             plyfile = os.path.join(plydir, name)
 
+            # =============================================
+            # load smpl vertices
+            # =============================================
             with open(plyfile) as ply:
                 plylines = ply.readlines()
             vertex_number = int(plylines[2].split(' ')[2])
@@ -250,38 +340,110 @@ if __name__ == "__main__":
             faces = np.zeros((face_number, 3), dtype=int)
 
             for j in range(9, 9+vertex_number):
-                vertices[j - 9] = np.asarray(plylines[j].strip().split(' '), dtype=float) + np.array([0, 0, 0.25])
+                vertices[j - 9] = np.asarray(plylines[j].strip().split(' '), dtype=float) + np.array([0, 0, 0])
 
             mesh.vertices = Vector3dVector(vertices)
             mesh.compute_vertex_normals()
             
-            # set_camera_pose
-            # r = np.matmul(rotations[i], np.linalg.inv(rotations[0]))
-            # r = np.matmul(camera_init, r)
+            
+            # =============================================
+            # Compute grid for currunt pose
+            # =============================================
+            grid_file = os.path.join(plydir + '_grid', f'grid_{idx}.pcd')
+            os.makedirs(os.path.join(plydir + '_grid'), exist_ok=True)
+            if os.path.exists(grid_file):
+                grid = o3d.io.read_point_cloud(grid_file)
+            else:
+                grid = crop_scene(kdtree, scene_pcd, positions[idx - start_lidar_idx])
+                o3d.io.write_point_cloud(grid_file, grid)
+            grid.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+
+            seg_grid = Segmentation(grid)   # Grid segmentation
+
+            plane_equations, segments, rest = seg_grid.run(5, 0.01)
+            for g in grid_list:
+                vis.remove_geometry(g, reset_bounding_box=False)
+            grid_list.clear()
+            for seg in segments:
+                grid_list.append(seg)
+            grid.paint_uniform_color([1,0,0])
+
+
+            if len(sys.argv) >= 4:
+                plyfile = os.path.join(plydir2, name)
+
+                with open(plyfile) as ply:
+                    plylines = ply.readlines()
+                vertex_number = int(plylines[2].split(' ')[2])
+                face_number = int(plylines[6].split(' ')[2])
+
+                vertices = np.zeros((vertex_number, 3))
+                faces_compare = np.zeros((face_number, 3), dtype=int)
+
+                for j in range(9, 9+vertex_number):
+                    vertices[j - 9] = np.asarray(plylines[j].strip().split(' '), dtype=float) + np.array([0, 0, 0])
+
+                mesh_compare.vertices = Vector3dVector(vertices)
+                mesh_compare.compute_vertex_normals()
+
             camera_pose = camera_init
-            # camera_pose = toRt(rotations[i], translations[i])
-            # camera_pose = np.linalg.inv(camera_pose)
-            if i == 0:
+            if not initialized:
                 for f in range(9+vertex_number, 9+vertex_number + face_number):
                     faces[f - 9 - vertex_number] = np.asarray(plylines[f].strip().split(' '), dtype=int)[1:]
                 mesh.triangles = Vector3iVector(faces)
+                # verts_color = np.zeros((6890, 3)) + np.asarray([75/255, 145/255, 183/255])
+                 # verts_color[back['verts']] = np.asarray([1 ,1, 1])
+                # verts_color[left_heel['verts']] = np.asarray([1 ,1, 1])
+                # verts_color[left_toe['verts']] = np.asarray([1 ,1, 1])
+                # verts_color[right_heel['verts']] = np.asarray([1 ,1, 1])
+                # verts_color[right_toe['verts']] = np.asarray([1 ,1, 1])
+                # mesh.vertex_colors = Vector3dVector(verts_color)
                 mesh.paint_uniform_color([75/255, 145/255, 183/255])
+                # box = mesh.get_axis_aligned_bounding_box()
+                # box.color = (0, 1, 0)
                 vis.add_geometry(mesh)
+                for seg in grid_list:
+                    vis.add_geometry(seg)
+
+                if len(sys.argv) >= 4:
+                    for f in range(9+vertex_number, 9+vertex_number + face_number):
+                        faces_compare[f - 9 - vertex_number] = np.asarray(plylines[f].strip().split(' '), dtype=int)[1:]
+                    mesh_compare.triangles = Vector3iVector(faces_compare)
+                    mesh_compare.paint_uniform_color([239/255, 105/255, 102/255])
+                    vis.add_geometry(mesh_compare)
                 o3dcallback(camera_pose)
                 vis.poll_events()
                 vis.update_renderer()    
                 cv2.waitKey(10)
+                initialized = True
 
             else:
                 with Timer('update renderer'):
                     vis.update_geometry(mesh)
+                    
+                    for seg in grid_list:
+                        vis.add_geometry(seg, reset_bounding_box=False)
+                    vis.update_geometry(grid)
+                    if len(sys.argv) >= 4:
+                        vis.update_geometry(mesh_compare)
                     # t = translations[i] - translations[i-1]
                     # camera_pose[:3, 3] -= t 
                     # np.array([-t[2], -t[0], -t[1]])
                     # o3dcallback(camera_pose)
+                    
                     vis.poll_events()
                     vis.update_renderer()
                     cv2.waitKey(10)
+
+                    while PAUSE:
+                        vis.poll_events()
+                        vis.update_renderer()
+                        cv2.waitKey(10)
+                    if DESTROY:
+                        vis.destroy_window()
+                    if REMOVE:
+                        vis.remove_geometry(scene_pcd, reset_bounding_box = False)
+                        REMOVE = False
                     outname = os.path.join(imagedir, '{:04d}.jpg'.format(i))
                     vis.capture_screen_image(outname)
 
@@ -291,6 +453,8 @@ if __name__ == "__main__":
             vis.poll_events()
             vis.update_renderer()
             cv2.waitKey(10)
+            if DESTROY:
+                vis.destroy_window()
     # o3d.visualization.draw_geometries(geometry_list  = geometies, window_name = 'Draw RT')
     # # 绘制open3d坐标系
     # line_set = o3d.geometry.LineSet()
