@@ -203,17 +203,17 @@ if __name__ == "__main__":
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    scene_pcd, kdtree = load_scene(pcd_dir)
+    # scene_pcd, kdtree = load_scene(pcd_dir)
     start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0])
     positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
-    vis.add_geometry(scene_pcd)
+    # vis.add_geometry(scene_pcd)
     if key == '-l':
         rt_file = np.loadtxt(lidar_file, dtype=float)        
         R_init = R.from_quat(rt_file[0, 4: 8]).as_matrix()  #3*3
         for i in range(0, rt_file.shape[0], 20):
             # 读取 i 帧的 RT
             R_lidar = R.from_quat(rt_file[i, 4: 8]).as_matrix()  #3*3
-            # R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init)) # 乘第一帧的逆
+            R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init)) # 乘第一帧的逆
             R_T = rt_file[i, 1:4].reshape(1,3)   #1*3
             R_lidar = R_lidar.T + R_T
             line_pcd, point_pcd = triangle_pcd(R_T, R_lidar)
