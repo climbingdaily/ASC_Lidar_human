@@ -15,6 +15,12 @@ class Segmentation():
         self.segments = {}
         self.segments_idx = {}
 
+    def set_pcd(self, pcd):
+        self.pcd = pcd
+        self.segments.clear()
+        self.segment_models.clear()
+        self.segments_idx.clear()
+
     def seg_by_normals(self, eps = 0.15):
         """
         eps (float):  Density parameter that is used to find neighbouring points.
@@ -62,6 +68,8 @@ class Segmentation():
         plane_count = 0
 
         for i in range(max_plane_idx):
+            if len(rest_idx) < 100:
+                break
             rest = self.pcd.select_by_index(rest_idx)
             colors = plt.get_cmap("tab20")(count + i)
             
@@ -175,32 +183,32 @@ class Segmentation():
         colors[labels < 0] = 0
         rest.colors = o3d.utility.Vector3dVector(colors[:, :3])
 
-
     def run(self, max_plane = 5, distance_thresh = 0.02):
         normal_segments_idx, sum_rest_idx = self.seg_by_normals()
         count = 0
         if len(normal_segments_idx) > 0:
             for i in range(len(normal_segments_idx)):
+                # z_value = np.asarray(self.pcd.select_by_index(normal_segments_idx[i]).normals).mean(axis=0)[2]
                 # rest, plane_count = self.loop_ransac(normal_segments_idx[i], count, max_plane, distance_thresh)
                 rest_idx, plane_count = self.dbscan_with_ransac(normal_segments_idx[i], count, max_plane, distance_thresh)
                 count += plane_count
                 sum_rest_idx += rest_idx
-            rest_idx, plane_count = self.dbscan_with_ransac(sum_rest_idx, count, max_plane, distance_thresh)
-            sum_rest_idx = rest_idx
-            count += plane_count
 
-            equations, planes, planes_idx, rest_plane = self.filter_plane()
-            sum_rest_idx += rest_plane
-        else:
-            equations = []
-            planes = []
-            planes_idx = []
-        
-        print('Sum plane: ', len(planes))
-        
-        z_order = np.argsort(-np.asarray(equations)[:,2])
+        sum_rest_idx, plane_count = self.dbscan_with_ransac(sum_rest_idx, count, max_plane, distance_thresh)
+        count += plane_count
 
-        return [equations[oo] for oo in z_order], [planes[oo] for oo in z_order], [planes_idx[oo] for oo in z_order], sum_rest_idx
+        equations, planes, planes_idx, rest_plane = self.filter_plane()
+        sum_rest_idx += rest_plane
+
+        print(f'Sum plane: {len(planes)}')
+
+        if len(planes) > 0:
+            z_order = np.argsort(-np.asarray(equations)[:,2])
+            equations = [equations[oo] for oo in z_order]
+            planes = [planes[oo] for oo in z_order]
+            planes_idx = [planes_idx[oo] for oo in z_order]
+
+        return equations, planes, planes_idx, sum_rest_idx
 
 
 PAUSE = False
@@ -253,7 +261,7 @@ if __name__ == "__main__":
     Vector3dVector = o3d.utility.Vector3dVector
     import pyransac3d as pyrsc
     vis = creat_vis()
-    idx = 85
+    idx = 760
     # pcd_file = f"E:\\SCSC_DATA\HumanMotion\\1023\\ouster_test.pcd"
     pcd_file = f"E:\\SCSC_DATA\HumanMotion\\1022\\SMPL\\rockclimbing_step_1_grid\\grid_{idx}.pcd"
     smpl_fle = f"E:\\SCSC_DATA\HumanMotion\\1022\\SMPL\\rockclimbing_step_1\\{idx}_smpl.ply"
@@ -273,7 +281,7 @@ if __name__ == "__main__":
     # Ransac 平面拟合
     # ==============================================
     seg_pcd = Segmentation(scene_pcd)
-    plane_equations, segments, segments_idx, rest = seg_pcd.run(10, 0.04)
+    plane_equations, segments, segments_idx, rest = seg_pcd.run(10, 0.01)
     # for i in range(len(segments)):
         # vis.add_geometry(segments[i])
     # vis.add_geometry(rest)

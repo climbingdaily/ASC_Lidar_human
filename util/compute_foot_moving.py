@@ -19,8 +19,8 @@ def load_data(pospath):
 def detect_jump(left_foot, right_foot):
     lf_height = np.asarray(left_foot[:50]).mean()
     rf_height = np.asarray(right_foot[:50]).mean()
-    left_foot -= lf_height
-    right_foot -= rf_height
+    left_foot = np.asarray(left_foot- lf_height)
+    right_foot = np.asarray(right_foot- rf_height)
     l_peaks, lprop = find_peaks(left_foot, distance=80, height=0.05, prominence=0.05)
     r_peaks, rprop = find_peaks(right_foot, distance=80, height=0.05, prominence=0.05)
     jumps = []
@@ -47,8 +47,8 @@ def detect_step_on_ground(left_foot, right_foot, distance=80, prominence=0.05):
     
     lf_height = np.asarray(left_foot[:50]).mean()
     rf_height = np.asarray(right_foot[:50]).mean()
-    left_foot -= lf_height
-    right_foot -= rf_height
+    left_foot = np.asarray(left_foot- lf_height)
+    right_foot = np.asarray(right_foot- rf_height)
     l_peaks, b = find_peaks(-left_foot, distance=distance, prominence=prominence)
     r_peaks, b = find_peaks(-right_foot, distance=distance, prominence=prominence)
 
@@ -63,6 +63,23 @@ def detect_step_on_ground(left_foot, right_foot, distance=80, prominence=0.05):
     # plt.show()
     return l_peaks, r_peaks
 
+def plots(plt, right_foot, left_foot, label=''):
+    l_peaks, r_peaks, jumps = detect_jump(left_foot, right_foot)
+    lf_peaks, rf_peaks = detect_step_on_ground(left_foot, right_foot)
+    
+    lf_height = np.asarray(left_foot[:50]).mean()
+    rf_height = np.asarray(right_foot[:50]).mean()
+    # left_foot = np.asarray(left_foot- lf_height)
+    # right_foot = np.asarray(right_foot- rf_height)
+
+    plt.plot(right_foot, label='right'+label, linestyle = '--')
+    plt.plot(left_foot, label='left'+label)
+    plt.scatter(r_peaks, right_foot[r_peaks], marker='x')
+    plt.scatter(l_peaks, left_foot[l_peaks], marker='o')
+    plt.scatter(rf_peaks, right_foot[rf_peaks], marker='x')
+    plt.scatter(lf_peaks, left_foot[lf_peaks], marker='o')
+    print(jumps)
+
 if __name__ == '__main__':
     parser = configargparse.ArgumentParser()
     parser.add_argument("-P", "--pos_data", type=str,
@@ -70,18 +87,16 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     pos_data = load_data(args.pos_data)
-    left_foot = pos_data[:, 6, 1]
-    right_foot = pos_data[:, 3, 1]
-    l_peaks, r_peaks, jumps = detect_jump(left_foot, right_foot)
-    lf_peaks, rf_peaks = detect_step_on_ground(left_foot, right_foot)
-    
-    print(jumps)
-    plt.plot(right_foot, label='right foot')
-    plt.plot(left_foot, label='left_foot')
-    plt.scatter(l_peaks, left_foot[l_peaks], marker='o')
-    plt.scatter(r_peaks, right_foot[r_peaks], marker='x')
-    plt.scatter(rf_peaks, right_foot[rf_peaks], marker='x')
-    plt.scatter(lf_peaks, left_foot[lf_peaks], marker='o')
+    # left_foot = pos_data[:, 7, 1]
+    # right_foot = pos_data[:, 3, 1]
+    # plots(plt, right_foot, left_foot, label='foot')
+    left_foot_end = pos_data[:, 8, 1]
+    right_foot_end = pos_data[:, 4, 1]
+    plots(plt, right_foot_end, left_foot_end, label='foot_end')
+
+    right_hand = pos_data[:, 19, 1]
+    left_hand = pos_data[:, 47, 1]
+    plots(plt, right_hand, left_hand, label='hand')
 
     plt.legend()
     plt.show()

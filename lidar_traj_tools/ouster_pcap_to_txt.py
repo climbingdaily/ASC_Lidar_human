@@ -50,11 +50,17 @@ def pcap_to_txt(source: client.PacketSource,
     xyzlut = client.XYZLut(metadata)
 
     # create an iterator of LidarScans from pcap and bound it if num is specified
-    scans = iter(client.Scans(source))
+    # scans = iter(client.Scans(source))
+    scans = client.Scans(source)
     if num > 0:
         scans = islice(scans, num)
-
-    for idx, scan in enumerate(scans):
+    idx = -1
+    for scan in scans:
+        idx += 1
+        if idx < 7000:
+            print('idx: ', idx)
+            continue
+    # for idx, scan in enumerate(scans):
 
         # copy per-column timestamps for each channel
         col_timestamps = scan.header(client.ColHeader.TIMESTAMP)
@@ -112,7 +118,7 @@ if __name__ == '__main__':
         pcap_path = sys.argv[1]
         frame_num = sys.argv[2]
 
-    metadata_path = '.\\live-1024x20.json'
+    metadata_path = '.\\lidar_traj_tools\\live-1024x20.json'
     with open(metadata_path, 'r') as f:
         metadata = client.SensorInfo(f.read())
     source = pcap.Pcap(pcap_path, metadata)
