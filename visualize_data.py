@@ -170,7 +170,8 @@ def o3dcallback(camera_pose=None):
 
 def load_scene(pcd_path):
     print('Loading scene...')
-    scene_name = 'climbinggym1101'
+    scene_name = 'lab_building'
+    # scene_name = 'campus'
     scene_pcd = o3d.io.read_point_cloud(os.path.join(pcd_path, scene_name + '.pcd'))
     print('Loading normals...')
     normal_file = os.path.join(pcd_path, scene_name + '_normals.pkl')
@@ -193,7 +194,7 @@ if __name__ == "__main__":
     
     lidar_file = "E:\\SCSC_DATA\HumanMotion\\1023\\shiyanlou002_lidar_filt_synced_offset.txt"
     plydir = 'E:\\SCSC_DATA\HumanMotion\\1023\\SMPL\\shiyanlou002_step_1'
-    pcd_dir = 'E:\\SCSC_DATA\\HumanMotion'
+    pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\scenes'
 
     if len(sys.argv) < 2:
         key = '-m'

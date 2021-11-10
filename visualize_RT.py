@@ -84,7 +84,8 @@ vis.register_key_callback(ord("V"), remove_scene_geometry)
 vis.create_window(window_name='RT', width=1280, height=720)
 
 def crop_scene(kdtree, scene_pcd, position):
-    [_, idx, _] = kdtree.search_radius_vector_3d(position, radius = 1.2)
+    position[-1] -= 0.8
+    [_, idx, _] = kdtree.search_radius_vector_3d(position, radius = 0.6)
     return scene_pcd.select_by_index(idx)
 
 def toRt(r, t):
@@ -165,12 +166,12 @@ def o3dcallback(camera_pose=None):
     print(camera_pose)
     init_camera(camera_pose)
 
-def load_scene(pcd_path):
+def load_scene(pcd_path, file_name):
     print('Loading scene...')
-    scene_pcd = o3d.io.read_point_cloud(os.path.join(pcd_path, 'scene.pcd'))
+    scene_pcd = o3d.io.read_point_cloud(os.path.join(pcd_path, file_name + '.pcd'))
     print('Loading normals...')
     
-    with open(os.path.join(pcd_path, 'scene_normals.pkl'), 'rb') as f:
+    with open(os.path.join(pcd_path, file_name + '_normals.pkl'), 'rb') as f:
         normals = pkl.load(f)
     scene_pcd.normals = o3d.utility.Vector3dVector(normals)
     # scene_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.10, max_nn=80))
@@ -182,10 +183,11 @@ def load_scene(pcd_path):
     return scene_pcd, kdtree
 
 if __name__ == "__main__":
-    
-    lidar_file = "E:\\SCSC_DATA\HumanMotion\\1023\\shiyanlou002_lidar_filt_synced_offset.txt"
+
+    file_name = 'lab_building'
+    lidar_file = "E:\\SCSC_DATA\HumanMotion\\visualization\\" + file_name + "_lidar_filt_synced_offset.txt"
     plydir = 'E:\\SCSC_DATA\HumanMotion\\1023\\SMPL\\shiyanlou002_step_1'
-    pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\1023'
+    pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\scenes'
 
     if len(sys.argv) < 2:
         key = '-m'
@@ -210,7 +212,7 @@ if __name__ == "__main__":
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    scene_pcd, kdtree = load_scene(pcd_dir)
+    scene_pcd, kdtree = load_scene(pcd_dir, file_name)
     start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0])
     positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
     if not REMOVE:
@@ -366,14 +368,15 @@ if __name__ == "__main__":
                 o3d.io.write_point_cloud(grid_file, grid)
             grid.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
-            seg_grid = Segmentation(grid)   # Grid segmentation
+            # seg_grid = Segmentation(grid)   # Grid segmentation
 
-            _, segments, _, _ = seg_grid.run(10, 0.01)
+            # _, segments, _, _ = seg_grid.run(10, 0.01)
             for g in grid_list:
                 vis.remove_geometry(g, reset_bounding_box=False)
             grid_list.clear()
-            for seg in segments:
-                grid_list.append(seg)
+            grid_list.append(grid)
+            # for seg in segments:
+            #     grid_list.append(seg)
             grid.paint_uniform_color([1,0,0])
 
 
@@ -410,7 +413,7 @@ if __name__ == "__main__":
                 box = mesh.get_axis_aligned_bounding_box()
                 box.color = (0, 1, 0)
                 vis.add_geometry(mesh)
-                vis.add_geometry(box)
+                # vis.add_geometry(grid)
                 for seg in grid_list:
                     vis.add_geometry(seg)
 
@@ -432,7 +435,7 @@ if __name__ == "__main__":
                     
                     for seg in grid_list:
                         vis.add_geometry(seg, reset_bounding_box=False)
-                    vis.update_geometry(grid)
+                    # vis.update_geometry(grid)
                     if len(sys.argv) >= 4:
                         vis.update_geometry(mesh_compare)
                     # t = translations[i] - translations[i-1]
