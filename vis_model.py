@@ -23,6 +23,11 @@ Vector3iVector = o3d.utility.Vector3iVector
 Vector2iVector = o3d.utility.Vector2iVector
 TriangleMesh = o3d.geometry.TriangleMesh
 
+yellow = [251/255, 217/255, 2/255]
+red = [234/255, 101/255, 144/255]
+blue = [27/255, 158/255, 227/255]
+purple = [61/255, 79/255, 222/255]
+# blue = [75/255, 145/255, 183/255]
 
 def change_background_to_black(vis):
     opt = vis.get_render_option()
@@ -51,6 +56,15 @@ PAUSE = False
 DESTROY = False
 REMOVE = False
 READ = False
+VIS_TRAJ = False
+VIS_STREAM = False
+
+def stream_callback(vis):
+    global VIS_STREAM
+    VIS_STREAM = not VIS_STREAM
+    print('VIS_STREAM', VIS_STREAM)
+    return False
+
 def pause_callback(vis):
     global PAUSE
     PAUSE = not PAUSE
@@ -72,6 +86,45 @@ def read_dir_ply(vis):
     READ = not READ
     print('READ', READ)
     return False
+
+def read_dir_traj(vis):
+    global VIS_TRAJ
+    VIS_TRAJ = not VIS_TRAJ
+    print('VIS_TRAJ', VIS_TRAJ)
+    return False
+
+def add_mesh_by_order(vis, plydir, mesh_list, color, order = True):
+    global VIS_STREAM
+    # append = mesh_list[0].split('_')[1:]
+    # tail = '_'
+    # for a in append:
+    #     tail += a + '_'
+    # tail = tail[:-1]
+    if order:
+        num = np.array([int(m.split('_')[0]) for m in mesh_list], dtype=np.int32)
+        idxs = np.argsort(num)
+    else:
+        idxs = np.arange(len(mesh_list))
+    pre_mesh = None
+    
+    geometies = []
+    for i in idxs:
+        plyfile = os.path.join(plydir, mesh_list[i])
+
+        mesh = o3d.io.read_triangle_mesh(plyfile)
+        mesh.compute_vertex_normals()
+        mesh.paint_uniform_color(color)
+        if VIS_STREAM and pre_mesh is not None:
+            vis.remove_geometry(pre_mesh, reset_bounding_box = False)
+            geometies.pop()
+        geometies.append(mesh)
+        vis.add_geometry(mesh, reset_bounding_box = False)
+        pre_mesh = mesh
+        vis.poll_events()
+        vis.update_renderer()    
+        cv2.waitKey(10)
+    return geometies
+
 # key_to_callback = {}
 # key_to_callback[ord("K")] = change_background_to_black
 # key_to_callback[ord("R")] = load_render_option
@@ -86,6 +139,8 @@ vis = o3d.visualization.VisualizerWithKeyCallback()
 vis.register_key_callback(ord("D"), destroy_callback)
 vis.register_key_callback(ord("C"), remove_scene_geometry)
 vis.register_key_callback(ord(" "), read_dir_ply)
+vis.register_key_callback(ord("T"), read_dir_traj)
+vis.register_key_callback(ord("V"), stream_callback)
 # vis.register_key_callback(ord('A'), o3d_callback_rotate)
 # vis.create_window(window_name='RT', width=1920, height=1080)
 vis.create_window(window_name='RT', width=1280, height=720)
@@ -170,21 +225,22 @@ def o3dcallback(camera_pose=None):
 
 def load_scene(pcd_path):
     print('Loading scene...')
-    scene_name = 'lab_building'
+    scene_name = 'climbinggym1101'
+    # scene_name = 'lab_building'
     # scene_name = 'campus'
     scene_pcd = o3d.io.read_point_cloud(os.path.join(pcd_path, scene_name + '.pcd'))
-    print('Loading normals...')
-    normal_file = os.path.join(pcd_path, scene_name + '_normals.pkl')
-    if os.path.exists(normal_file):
-        with open(normal_file, 'rb') as f:
-            normals = pkl.load(f)
-        scene_pcd.normals = o3d.utility.Vector3dVector(normals)
-    else:
-        scene_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.10, max_nn=80))
-        normals = np.asarray(scene_pcd.normals)
-        with open(normal_file, 'wb') as f:
-            pkl.dump(normals, f)
-        print('Save scene normals in: ', normal_file)
+    # print('Loading normals...')
+    # normal_file = os.path.join(pcd_path, scene_name + '_normals.pkl')
+    # if os.path.exists(normal_file):
+    #     with open(normal_file, 'rb') as f:
+    #         normals = pkl.load(f)
+    #     scene_pcd.normals = o3d.utility.Vector3dVector(normals)
+    # else:
+    #     scene_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.10, max_nn=80))
+    #     normals = np.asarray(scene_pcd.normals)
+    #     with open(normal_file, 'wb') as f:
+    #         pkl.dump(normals, f)
+    #     print('Save scene normals in: ', normal_file)
 
     # scene_pcd.voxel_down_sample(voxel_size=0.02)
     print('Scene loaded...')
@@ -193,9 +249,8 @@ def load_scene(pcd_path):
 if __name__ == "__main__":
     
     lidar_file = "E:\\SCSC_DATA\HumanMotion\\1023\\shiyanlou002_lidar_filt_synced_offset.txt"
-    plydir = 'E:\\SCSC_DATA\HumanMotion\\1023\\SMPL\\shiyanlou002_step_1'
+    plydir = 'E:\\SCSC_DATA\HumanMotion\\visualization\\contact_compare\\\climbing'
     pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\scenes'
-
     if len(sys.argv) < 2:
         key = '-m'
 
@@ -219,9 +274,10 @@ if __name__ == "__main__":
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    scene_pcd = load_scene(pcd_dir)
-    start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0])
+    start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0]) 
     positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
+    
+    scene_pcd = load_scene(pcd_dir)
     if not REMOVE:
         vis.add_geometry(scene_pcd)
     if key == '-l':
@@ -306,6 +362,7 @@ if __name__ == "__main__":
         right_toe = all_vertices['right_toe']
         
     mesh_list = []
+    sphere_list = []
 
     while True:
         with Timer('update renderer', True):
@@ -320,19 +377,59 @@ if __name__ == "__main__":
                 for mesh in mesh_list:
                     vis.remove_geometry(mesh, reset_bounding_box = False)
                 mesh_list.clear()
+                mesh_l1 = []
+                mesh_l2 = []
+                mesh_l3 = []
+                mesh_l4 = []
                 for plyfile in meshfiles:
                     if plyfile.split('.')[-1] != 'ply':
                         continue
                     print('name', plyfile)
-                    plyfile = os.path.join(plydir, plyfile)
-
-                    mesh = o3d.io.read_triangle_mesh(plyfile)
-                    mesh.compute_vertex_normals()
-                    mesh.paint_uniform_color([75/255, 145/255, 183/255])
-                    mesh_list.append(mesh)
-                for mesh in mesh_list:
-                    vis.add_geometry(mesh, reset_bounding_box = False)
+                    if plyfile.split('_')[-1] == 'opt.ply':
+                        mesh_l1.append(plyfile)
+                    elif plyfile.split('_')[-1] == 'mocap.ply':
+                        mesh_l2.append(plyfile)
+                    elif plyfile.split('_')[-1] == 'smpl.ply':
+                        mesh_l3.append(plyfile)
+                    else:
+                        mesh_l4.append(plyfile)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l1, red)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l2, yellow)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l3, blue)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l4, blue, order=False)
+                READ = False
+            if VIS_TRAJ:
+                
+                for sphere in sphere_list:
+                    vis.remove_geometry(sphere, reset_bounding_box = False)
+                sphere_list.clear()
+                traj_files = os.listdir(plydir)
+                for trajfile in traj_files:
+                    if trajfile.split('.')[-1] != 'txt':
+                        continue
+                    print('name', trajfile)
+                    if trajfile.split('_')[-1] == 'offset.txt':
+                        color = red
+                    elif trajfile.split('_')[-1] == 'synced.txt':
+                        color = yellow
+                    else:
+                        color = blue
+                    trajfile = os.path.join(plydir, trajfile)
+                    trajs = np.loadtxt(trajfile)[:,1:4]
+                    traj_cloud = o3d.geometry.PointCloud()
+                    # show as points
+                    traj_cloud.points = Vector3dVector(trajs)
+                    traj_cloud.paint_uniform_color(color)
+                    sphere_list.append(traj_cloud)
+                    # for t in range(1400, 2100, 1):
+                    #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.03)
+                    #     sphere.vertices = Vector3dVector(np.asarray(sphere.vertices) + trajs[t])
+                    #     sphere.compute_vertex_normals()
+                    #     sphere.paint_uniform_color(color)
+                    #     sphere_list.append(sphere)
+                for sphere in sphere_list:
+                    vis.add_geometry(sphere, reset_bounding_box = False)
                     vis.poll_events()
                     vis.update_renderer()    
-                    cv2.waitKey(10)
-                READ = False
+                    cv2.waitKey(1)
+                VIS_TRAJ = False

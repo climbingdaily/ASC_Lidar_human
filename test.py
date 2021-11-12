@@ -185,6 +185,7 @@ def cal_checkpoiont():
 
     d2 = np.linalg.norm(b - start)
     d3 = np.linalg.norm(c - start)
+    print('start point in labbuilding')
     print('d2 ', d2)
     print('d3 ', d3)
 
@@ -197,6 +198,8 @@ def cal_checkpoiont():
     d1 = np.linalg.norm(a - start)
     d2 = np.linalg.norm(b - start)
     d3 = np.linalg.norm(c - start)
+    print('end point in labbuilding')
+
     print('d1 ', d1)
     print('d2 ', d2)
     print('d3 ', d3)
@@ -211,10 +214,13 @@ def cal_checkpoiont():
     d2 = np.linalg.norm(b - start)
     d22 = np.linalg.norm(bb - start)
     d3 = np.linalg.norm(c - start)
+    print('CP1 point in labbuilding')
+
     print('d1 ', d1)
     print('d2 ', d2)
     print('d22 ', d22)
     print('d3 ', d3)
+
 
     # 9367
     start = np.array([57.381191, -25.599457, 1.035680]) # ground
@@ -222,6 +228,7 @@ def cal_checkpoiont():
     b = np.array([57.2693, -25.4669,   0.9961]) # mocap+ ldiar
     bb = np.array([ 57.3397, -25.5093,   0.9585]) # mocap+ ldiar +filt
     c = np.array([ 57.3179, -25.5093,   1.0339])
+    print('cp2 point in labbuilding')
     
     d1 = np.linalg.norm(a - start)
     d2 = np.linalg.norm(b - start)
@@ -250,6 +257,8 @@ def cal_checkpoiont():
     d2 = np.linalg.norm(b - start)
     d22 = np.linalg.norm(bb - start)
     d3 = np.linalg.norm(c - start)
+    print('end point in campus')
+
     print('d1 ', d1)
     print('d2 ', d2)
     print('d22 ', d22)
@@ -275,10 +284,23 @@ def cal_dist(file_path, idx):
 #         tot_dist.append(dist)
 #         print(f'num {count} dist: {dist:.3f}')
 
+def cal_mocap_smpl_trans():
+    a = np.array([32.472198, 60.644207, -0.657228]) # slamcap, 1927 frams campus
+    aa = np.array([34.384434, 53.580666, -0.561240]) # slamcap , 1832 frams campus
+    aaa = np.array([-25.074957, 63.042736, 0.064208]) # slamcap , 2949 frams campus
+    
+    b = np.array([33.435452, 56.857124, 0.926840]) # mocap, 1927 frames(10088) campus
+    bb = np.array([34.662342, 50.486450, 0.900601]) # mocap, 1832 frames(9609) campus
+    bbb = np.array([ -22.015713, 62.341846, 0.886846]) # mocap, 2949 frames(15162) campus
+    print('1927: ', b-a)
+    print('1832: ', bb-aa)
+    print('2949: ', bbb-aaa)
+
 # print('meand dist: ', np.asarray(tot_dist).mean())
 cal_checkpoiont()
-file_path = 'E:\\SCSC_DATA\\HumanMotion\\visualization\\lab_building_lidar_filt_synced_offset.txt'
-cal_dist(file_path, 1612)
-cal_dist(file_path, 12224)
-cal_dist(file_path, 9367)
-cal_dist(file_path, 9265)
+cal_mocap_smpl_trans()
+# file_path = 'E:\\SCSC_DATA\\HumanMotion\\visualization\\lab_building_lidar_filt_synced_offset.txt'
+# cal_dist(file_path, 1612)
+# cal_dist(file_path, 12224)
+# cal_dist(file_path, 9367)
+# cal_dist(file_path, 9265)

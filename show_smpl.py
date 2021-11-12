@@ -184,6 +184,7 @@ def load_scene(pcd_path, file_name):
 
 if __name__ == "__main__":
 
+    show_grid = False
     file_name = 'lab_building'
     lidar_file = "E:\\SCSC_DATA\HumanMotion\\visualization\\" + file_name + "_lidar_filt_synced_offset.txt"
     plydir = 'E:\\SCSC_DATA\HumanMotion\\1023\\SMPL\\shiyanlou002_step_1'
@@ -359,26 +360,26 @@ if __name__ == "__main__":
             # =============================================
             # Compute grid for currunt pose
             # =============================================
-            grid_file = os.path.join(plydir + '_grid', f'grid_{idx}.pcd')
-            os.makedirs(os.path.join(plydir + '_grid'), exist_ok=True)
-            if os.path.exists(grid_file):
-                grid = o3d.io.read_point_cloud(grid_file)
-            else:
-                grid = crop_scene(kdtree, scene_pcd, positions[idx - start_lidar_idx])
-                o3d.io.write_point_cloud(grid_file, grid)
-            grid.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            if show_grid:
+                grid_file = os.path.join(plydir + '_grid', f'grid_{idx}.pcd')
+                os.makedirs(os.path.join(plydir + '_grid'), exist_ok=True)
+                if os.path.exists(grid_file):
+                    grid = o3d.io.read_point_cloud(grid_file)
+                else:
+                    grid = crop_scene(kdtree, scene_pcd, positions[idx - start_lidar_idx])
+                    o3d.io.write_point_cloud(grid_file, grid)
+                grid.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
 
-            # seg_grid = Segmentation(grid)   # Grid segmentation
+                # seg_grid = Segmentation(grid)   # Grid segmentation
 
-            # _, segments, _, _ = seg_grid.run(10, 0.01)
-            for g in grid_list:
-                vis.remove_geometry(g, reset_bounding_box=False)
-            grid_list.clear()
-            grid_list.append(grid)
-            # for seg in segments:
-            #     grid_list.append(seg)
-            grid.paint_uniform_color([1,0,0])
-
+                # _, segments, _, _ = seg_grid.run(10, 0.01)
+                for g in grid_list:
+                    vis.remove_geometry(g, reset_bounding_box=False)
+                grid_list.clear()
+                grid_list.append(grid)
+                # for seg in segments:
+                #     grid_list.append(seg)
+                grid.paint_uniform_color([1,0,0])
 
             if len(sys.argv) >= 4:
                 plyfile = os.path.join(plydir2, name)
@@ -467,24 +468,3 @@ if __name__ == "__main__":
             cv2.waitKey(10)
             if DESTROY:
                 vis.destroy_window()
-    # o3d.visualization.draw_geometries(geometry_list  = geometies, window_name = 'Draw RT')
-    # # 绘制open3d坐标系
-    # line_set = o3d.geometry.LineSet()
-    # point_cloud = o3d.geometry.PointCloud()
-    # axis_pcd = o3d.geometry.create_mesh_coordinate_frame(size=0.5, origin=[0, 0, 0])
-    # # 在3D坐标上绘制点：坐标点[x,y,z]对应R，G，B颜色
-    # points = np.array([[1, 0, 0]], dtype=np.float64)
-    # colors = [[1, 0, 0]]
- 
-    # # 方法1（非阻塞显示）
-    # vis = o3d.visualization
-    # vis.create_window(window_name='Open3D_1', width=600, height=600, left=10, top=10, visible=True)
-    # vis.get_render_option().point_size = 10  # 设置点的大小
-    # # 先把点云对象添加给Visualizer
-    # vis.add_geometry(axis_pcd)
- 
-    # line_pcd, point_pcd = triangle_pcd()
-    # geometies = []
-    # geometies.append(line_pcd)
-    # geometies.append(point_pcd)
- 
