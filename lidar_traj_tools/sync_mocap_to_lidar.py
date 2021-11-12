@@ -3,10 +3,7 @@ from pathlib import Path
 import numpy as np
 import sys
 import os
-
-_lidar_key = 351.666 
-_mocap_key = 23.04
-_mocap_frame_time = 0.01
+import json
 
 def save_in_same_dir(file_path, data, ss):
     dirname = os.path.dirname(file_path)
@@ -17,8 +14,8 @@ def save_in_same_dir(file_path, data, ss):
     print('save traj in: ', save_file)
 
 
-def get_overlap(lidar_file, mocap_root_file, lidar_key=_lidar_key, mocap_key=_mocap_key, 
-                mocap_frame_time =_mocap_frame_time, save_file=True):
+def get_overlap(lidar_file, mocap_root_file, 
+                lidar_sync, mocap_sync, mocap_frame_time, save_file=True):
     # 1. 读取数据
     lidar = np.loadtxt(lidar_file, dtype=float)
     mocap_root = np.loadtxt(mocap_root_file, dtype=float)
@@ -26,7 +23,7 @@ def get_overlap(lidar_file, mocap_root_file, lidar_key=_lidar_key, mocap_key=_mo
     # 2. 读取时间戳
     lidar_time = lidar[:,-1]
     mocap_time = mocap_root[:,-1]
-    start = lidar_key - mocap_key
+    start = lidar_sync - mocap_sync
 
     # 3. 根据lidar的时间戳，选取对应的mocap的帧
     _lidar_time = lidar_time - start
@@ -43,17 +40,25 @@ def get_overlap(lidar_file, mocap_root_file, lidar_key=_lidar_key, mocap_key=_mo
     _mocap_root = np.asarray(_mocap_root)
     _lidar = np.asarray(_lidar)
     if save_file:
-        save_in_same_dir(mocap_root_file, _mocap_root, '_syncLidarTime')    
-        save_in_same_dir(lidar_file, _lidar, '_syncMocapTime')    
+        save_in_same_dir(mocap_root_file, _mocap_root, '_synced')    
+        save_in_same_dir(lidar_file, _lidar, '_synced')    
     return _mocap_root, _lidar
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
+    if len(sys.argv) < 3:
         print('请输入 [*lidar_traj.txt] [*mocap_root.txt]')
-        lidar_file = "e:\\SCSC_DATA\HumanMotion\\0913\\001\\lidar\\lidar_trajectory_afterFit.txt"
-        mocap_root_file = "e:\\SCSC_DATA\HumanMotion\\0913\\001\\mocap\\0913daiyudi001_root.txt"
+        lidar_file = "e:\\SCSC_DATA\HumanMotion\\1009\\001\\lidar_trajectory.txt"
+        mocap_root_file = "e:\\SCSC_DATA\HumanMotion\\1009\\001\\1009shiyanlou_001_root.txt"
     else:
         lidar_file = sys.argv[1]
         mocap_root_file = sys.argv[2]
 
-    mocap_root, lidar= get_overlap(lidar_file, mocap_root_file)
+    init_json = os.path.join(os.path.dirname(mocap_root_file), 'init.json')
+    with open(init_json) as init:
+        init_params = json.load(init)
+        
+    mocap_sync = float(init_params['mocap_sync'])
+    lidar_sync = float(init_params['lidar_sync'])
+    mocap_framerate = int(init_params['mocap_framerate'])
+    
+    mocap_root, lidar= get_overlap(lidar_file, mocap_root_file, lidar_sync, mocap_sync, 1/mocap_framerate)

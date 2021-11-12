@@ -43,18 +43,24 @@ def pcap_to_txt(source: client.PacketSource,
         os.makedirs(txt_dir)
 
     field_names = 'TIMESTAMP (ns), RANGE (mm), SIGNAL, NEAR_IR, REFLECTIVITY, X (mm), Y (mm), Z (mm)'
-    field_fmts = ['%.6f', '%.6f', '%.6f', '%d', '%.6f', '%d']
+    field_fmts = ['%.6f', '%.6f', '%.6f', '%d', '%.6f', '%d', '%d']
 
     # [doc-stag-pcap-to-csv]
     # precompute xyzlut to save computation in a loop
     xyzlut = client.XYZLut(metadata)
 
     # create an iterator of LidarScans from pcap and bound it if num is specified
-    scans = iter(client.Scans(source))
+    # scans = iter(client.Scans(source))
+    scans = client.Scans(source)
     if num > 0:
         scans = islice(scans, num)
-
-    for idx, scan in enumerate(scans):
+    idx = -1
+    for scan in scans:
+        idx += 1
+        if idx < 7000:
+            print('idx: ', idx)
+            continue
+    # for idx, scan in enumerate(scans):
 
         # copy per-column timestamps for each channel
         col_timestamps = scan.header(client.ColHeader.TIMESTAMP)
@@ -88,12 +94,17 @@ def pcap_to_txt(source: client.PacketSource,
                 continue
             valid.append(i)
         if len(valid) > 20000:
-            save_frame = frame_data[valid][:, [0, 1, 2, 4, 7, 8]]   #Point:0 Point:1 Point:2 Reflectivity Timestamp Channel
+            save_frame = frame_data[valid][:, [0, 1, 2, 4, 7, 8, 5]]   #Point:0 Point:1 Point:2 Reflectivity Timestamp Channel
             save_frame[:, 4] = save_frame[:, 4] / 1e9       # nano second -> second
             order = np.argsort(save_frame[:, 4]).tolist()      # 以时间进行排序
             save_frame = save_frame[order] 
+            # np.savetxt(save_path, save_frame, fmt=field_fmts)
+            
+            txt_name = f'{save_frame[0,4]:.3f}'.replace('.', '_') + '.txt'
+            save_path = os.path.join(txt_dir, txt_name)
             np.savetxt(save_path, save_frame, fmt=field_fmts)
-            print(f'write frame #{idx}, to file: {save_path}')
+            
+            print(f'\rwrite frame #{idx}, to file: {save_path}', end="", flush=True)
             
         
 if __name__ == '__main__':
@@ -107,7 +118,7 @@ if __name__ == '__main__':
         pcap_path = sys.argv[1]
         frame_num = sys.argv[2]
 
-    metadata_path = '.\\live-1024x20.json'
+    metadata_path = '.\\lidar_traj_tools\\live-1024x20.json'
     with open(metadata_path, 'r') as f:
         metadata = client.SensorInfo(f.read())
     source = pcap.Pcap(pcap_path, metadata)
@@ -115,5 +126,5 @@ if __name__ == '__main__':
     from pathlib import Path
     dir_name = os.path.dirname(pcap_path)
     file_name = Path(pcap_path).stem
-    dir_name = os.path.join(dir_name, file_name + '_pcap_to_txt')
+    dir_name = os.path.join(dir_name, file_name + '_frames')
     pcap_to_txt(source, metadata, num=frame_num, txt_dir=dir_name)
