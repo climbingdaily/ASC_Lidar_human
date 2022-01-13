@@ -3,3 +3,4 @@ tools.py
 data/
 .vscode/
 __pycache__/
+*.json
