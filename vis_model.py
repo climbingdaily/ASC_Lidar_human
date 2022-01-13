@@ -29,6 +29,51 @@ blue = [27/255, 158/255, 227/255]
 purple = [61/255, 79/255, 222/255]
 # blue = [75/255, 145/255, 183/255]
 
+def set_view_zoom(vis, info, count, steps):
+    ctr = vis.get_view_control()
+    elements = ['zoom', 'lookat', 'up', 'front', 'field_of_view']
+    if 'step1' in info.keys():
+        steps = info['step1']
+    if 'views' in info.keys() and 'steps' in info.keys():
+        views = info['views']
+        fit_steps = info['steps']
+        count += info['start']
+        for i, v in enumerate(views):
+            if i == len(views) - 1:
+                continue
+            if count >= fit_steps[i+1]:
+                continue
+            for e in elements:
+                z1 = np.array(views[i]['trajectory'][0][e])
+                z2 = np.array(views[i+1]['trajectory'][0][e])
+                if e == 'zoom':
+                    ctr.set_zoom(z1 +(count - fit_steps[i])  * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                elif e == 'lookat':
+                    ctr.set_lookat(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                elif e == 'up':
+                    ctr.set_up(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                elif e == 'front':
+                    ctr.set_front(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+            break
+           
+            
+            
+    # for e in elements:
+    #     if count > steps:
+    #         break
+    #     z1 = np.array(info['view1']['trajectory'][0][e])
+    #     z2 = np.array(info['view2']['trajectory'][0][e])
+    #     if e == 'zoom':
+    #         ctr.set_zoom(z1 + count * (z2-z1) / (steps - 1))
+    #     elif e == 'lookat':
+    #         ctr.set_lookat(z1 + count * (z2-z1) / (steps - 1))
+    #     elif e == 'up':
+    #         ctr.set_up(z1 + count * (z2-z1) / (steps - 1))
+    #     elif e == 'front':
+    #         ctr.set_front(z1 + count * (z2-z1) / (steps - 1))
+    #     # elif e == 'field_of_view':
+        #     ctr.change_field_of_view(z1 + count * (z2-z1) / (steps - 1))
+
 def change_background_to_black(vis):
     opt = vis.get_render_option()
     opt.background_color = np.asarray([0, 0, 0])
@@ -51,18 +96,44 @@ def capture_image(vis):
     plt.show()
     return False
 
+def print_help(is_print=True):
+    if is_print:
+        print('============Help info============')
+        print('Press space to refresh mesh')
+        print('Press Q to quit window')
+        print('Press D to remove the scene')
+        print('Press T to load and show traj file')
+        print('Press F to stop current motion')
+        print('Press . to turn on auto-screenshot ')
+        print('Press , to set view zoom based on json file ')
+        print('=================================')
 
 PAUSE = False
 DESTROY = False
 REMOVE = False
 READ = False
 VIS_TRAJ = False
-VIS_STREAM = False
+SAVE_IMG = False
+SET_VIEW = False
+VIS_STREAM = True
+
+def set_view(vis):
+    global SET_VIEW
+    SET_VIEW = not SET_VIEW
+    print('SET_VIEW', SET_VIEW)
+    return False
+
+def save_imgs(vis):
+    global SAVE_IMG
+    SAVE_IMG = not SAVE_IMG
+    print('SAVE_IMG', SAVE_IMG)
+    return False
 
 def stream_callback(vis):
+    # 以视频流方式，更新式显示mesh
     global VIS_STREAM
     VIS_STREAM = not VIS_STREAM
-    print('VIS_STREAM', VIS_STREAM)
+    # print('VIS_STREAM', VIS_STREAM)
     return False
 
 def pause_callback(vis):
@@ -93,13 +164,10 @@ def read_dir_traj(vis):
     print('VIS_TRAJ', VIS_TRAJ)
     return False
 
-def add_mesh_by_order(vis, plydir, mesh_list, color, order = True):
-    global VIS_STREAM
-    # append = mesh_list[0].split('_')[1:]
-    # tail = '_'
-    # for a in append:
-    #     tail += a + '_'
-    # tail = tail[:-1]
+def add_mesh_by_order(vis, plydir, mesh_list, color, strs='render', order = True, start=None, end=None, info=None):
+    global VIS_STREAM, SAVE_IMG, SET_VIEW
+    save_dir = os.path.join(plydir, strs)
+    
     if order:
         num = np.array([int(m.split('_')[0]) for m in mesh_list], dtype=np.int32)
         idxs = np.argsort(num)
@@ -108,21 +176,59 @@ def add_mesh_by_order(vis, plydir, mesh_list, color, order = True):
     pre_mesh = None
     
     geometies = []
-    for i in idxs:
-        plyfile = os.path.join(plydir, mesh_list[i])
+    helps = True
+    count = 0
 
+    # trajs = np.loadtxt('G:\\Human_motion\\visualization\\trajs\\campus_lidar_filt_synced_offset.txt')
+    # mocap_trajs = np.loadtxt('G:\\Human_motion\\visualization\\trajs\\mocap_trans_synced.txt')
+
+    sphere_list = []
+    for i in idxs:
+        # set view zoom
+        if info is not None and SET_VIEW:
+            set_view_zoom(vis, info, count, end-start)
+        if order and end > start:
+            if num[i] < start or num[i] > end:
+                continue
+
+        plyfile = os.path.join(plydir, mesh_list[i])
+        # print(plyfile)
         mesh = o3d.io.read_triangle_mesh(plyfile)
         mesh.compute_vertex_normals()
         mesh.paint_uniform_color(color)
+        # mesh.vertices = Vector3dVector(np.array(mesh.vertices) - trajs[num[i],1:4] + mocap_trajs[num[i],1:4])
         if VIS_STREAM and pre_mesh is not None:
             vis.remove_geometry(pre_mesh, reset_bounding_box = False)
             geometies.pop()
+        elif not VIS_STREAM:
+            VIS_STREAM = True
         geometies.append(mesh)
+        # if count == 0:
+        #     vis.add_geometry(mesh, reset_bounding_box = True)
+        # else:
         vis.add_geometry(mesh, reset_bounding_box = False)
+            
+        # if count % 5 == 0:
+        #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.1)
+        #     sphere.vertices = Vector3dVector(np.asarray(sphere.vertices) + trajs[num[i],1:4])
+        #     sphere.compute_vertex_normals()
+        #     sphere.paint_uniform_color(color)
+        #     sphere_list.append(sphere)
+        #     vis.add_geometry(sphere, reset_bounding_box = False)
         pre_mesh = mesh
-        vis.poll_events()
-        vis.update_renderer()    
-        cv2.waitKey(10)
+        
+        if not vis_wait_key(vis, 10, helps=helps):
+            break
+        helps = False
+        if SAVE_IMG:
+            os.makedirs(save_dir, exist_ok=True)
+            
+            outname = os.path.join( save_dir, strs + '_{:04d}.jpg'.format(count))
+            vis.capture_screen_image(outname)
+        count += 1
+    for s in sphere_list:
+        vis.remove_geometry(s, reset_bounding_box = False)
+
     return geometies
 
 # key_to_callback = {}
@@ -136,14 +242,33 @@ def add_mesh_by_order(vis, plydir, mesh_list, color, order = True):
 # vis = o3d.visualization.Visualizer()
 vis = o3d.visualization.VisualizerWithKeyCallback()
 # vis.register_key_callback(ord(' '), pause_callback)
-vis.register_key_callback(ord("D"), destroy_callback)
-vis.register_key_callback(ord("C"), remove_scene_geometry)
+vis.register_key_callback(ord("Q"), destroy_callback)
+vis.register_key_callback(ord("D"), remove_scene_geometry)
 vis.register_key_callback(ord(" "), read_dir_ply)
 vis.register_key_callback(ord("T"), read_dir_traj)
-vis.register_key_callback(ord("V"), stream_callback)
+vis.register_key_callback(ord("F"), stream_callback)
+vis.register_key_callback(ord("."), save_imgs)
+vis.register_key_callback(ord(","), set_view)
 # vis.register_key_callback(ord('A'), o3d_callback_rotate)
-# vis.create_window(window_name='RT', width=1920, height=1080)
+# vis.create_window(window_name='Mesh vis', width=1920, height=1080)
 vis.create_window(window_name='RT', width=1280, height=720)
+# vis.create_window(window_name='RT', width=720, height=720)
+
+def vis_wait_key(vis, key, helps = True):
+    global DESTROY, READ, SAVE_IMG
+    print_help(helps)
+    vis.poll_events()
+    vis.update_renderer()
+    cv2.waitKey(key)
+    if DESTROY:
+        vis.destroy_window()
+    # if SAVE_IMG:
+    #     outname = os.path.join(plydir, 'render_' + strs, strs + '_{:04d}.jpg'.format(i))
+    #     vis.capture_screen_image(outname)
+    if READ:
+        return True
+    else:
+        return False
 
 def toRt(r, t):
     '''
@@ -223,11 +348,8 @@ def o3dcallback(camera_pose=None):
     print(camera_pose)
     init_camera(camera_pose)
 
-def load_scene(pcd_path):
+def load_scene(pcd_path, scene_name):
     print('Loading scene...')
-    scene_name = 'climbinggym1101'
-    # scene_name = 'lab_building'
-    # scene_name = 'campus'
     scene_pcd = o3d.io.read_point_cloud(os.path.join(pcd_path, scene_name + '.pcd'))
     # print('Loading normals...')
     # normal_file = os.path.join(pcd_path, scene_name + '_normals.pkl')
@@ -244,13 +366,17 @@ def load_scene(pcd_path):
 
     # scene_pcd.voxel_down_sample(voxel_size=0.02)
     print('Scene loaded...')
+    print_help()
     return scene_pcd
 
 if __name__ == "__main__":
     
     lidar_file = "E:\\SCSC_DATA\HumanMotion\\1023\\shiyanlou002_lidar_filt_synced_offset.txt"
     plydir = 'E:\\SCSC_DATA\HumanMotion\\visualization\\contact_compare\\\climbing'
-    pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\scenes'
+    # pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\scenes'
+    pcd_dir = 'J:\\Human_motion\\visualization'
+    
+
     if len(sys.argv) < 2:
         key = '-m'
 
@@ -265,8 +391,7 @@ if __name__ == "__main__":
             rot_file = sys.argv[3]
         elif key == '-m':
             plydir = sys.argv[2]
-            if len(sys.argv) >=4:
-                plydir2 = sys.argv[3]
+            scene_name = sys.argv[3]
             # lidar_file = sys.argv[3]
         else:
             print('python visualize_RT.py [-l] [lidar_traj_path]')
@@ -274,10 +399,14 @@ if __name__ == "__main__":
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0]) 
-    positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
+    # start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0]) 
+    # positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
     
-    scene_pcd = load_scene(pcd_dir)
+    # scene_name = 'climbinggym1101'
+    # scene_name = 'lab_building'
+    # scene_name = 'campus'
+
+    scene_pcd = load_scene(pcd_dir, scene_name)
     if not REMOVE:
         vis.add_geometry(scene_pcd)
     if key == '-l':
@@ -292,9 +421,7 @@ if __name__ == "__main__":
             line_pcd, point_pcd = triangle_pcd(R_T, R_lidar)
             # geometies.append(line_pcd)
             vis.add_geometry(line_pcd)
-            vis.poll_events()
-            vis.update_renderer()
-            cv2.waitKey(10)
+            vis_wait_key(vis, 10)
             # geometies.append(point_pcd)
 
     elif key == '-b':
@@ -367,12 +494,9 @@ if __name__ == "__main__":
     while True:
         with Timer('update renderer', True):
             # o3dcallback()
-            vis.poll_events()
-            vis.update_renderer()
-            cv2.waitKey(10)
-            if DESTROY:
-                vis.destroy_window()
+            vis_wait_key(vis, 10, helps=False)
             if READ:
+                # 读取mesh文件
                 meshfiles = os.listdir(plydir)
                 for mesh in mesh_list:
                     vis.remove_geometry(mesh, reset_bounding_box = False)
@@ -384,7 +508,7 @@ if __name__ == "__main__":
                 for plyfile in meshfiles:
                     if plyfile.split('.')[-1] != 'ply':
                         continue
-                    print('name', plyfile)
+                    # print('name', plyfile)
                     if plyfile.split('_')[-1] == 'opt.ply':
                         mesh_l1.append(plyfile)
                     elif plyfile.split('_')[-1] == 'mocap.ply':
@@ -393,17 +517,29 @@ if __name__ == "__main__":
                         mesh_l3.append(plyfile)
                     else:
                         mesh_l4.append(plyfile)
-                mesh_list += add_mesh_by_order(vis, plydir, mesh_l1, red)
-                mesh_list += add_mesh_by_order(vis, plydir, mesh_l2, yellow)
-                mesh_list += add_mesh_by_order(vis, plydir, mesh_l3, blue)
-                mesh_list += add_mesh_by_order(vis, plydir, mesh_l4, blue, order=False)
+
+                with open('J:\\Human_motion\\visualization\\info_video_climbing.json') as f:
+                    info = json.load(f)['climbing_top_2']
+
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l1, red,
+                                               'wo_opt_' + info['name'], start=info['start'], end=info['end'], info=info)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l2, yellow,
+                                               'mocap_' + info['name'], start=info['start'], end=info['end'], info=info)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l3, blue,
+                                               'with_opt_' + info['name'], start=info['start'], end=info['end'], info=info)
+                mesh_list += add_mesh_by_order(vis, plydir, mesh_l4,
+                                               blue, 'others' + info['name'], order=False)
+
                 READ = False
+
             if VIS_TRAJ:
-                
+                # 读取轨迹文件
                 for sphere in sphere_list:
                     vis.remove_geometry(sphere, reset_bounding_box = False)
                 sphere_list.clear()
                 traj_files = os.listdir(plydir)
+
+                # 读取文件夹内所有的轨迹文件
                 for trajfile in traj_files:
                     if trajfile.split('.')[-1] != 'txt':
                         continue
@@ -427,9 +563,9 @@ if __name__ == "__main__":
                     #     sphere.compute_vertex_normals()
                     #     sphere.paint_uniform_color(color)
                     #     sphere_list.append(sphere)
+
+                # 轨迹可视化
                 for sphere in sphere_list:
                     vis.add_geometry(sphere, reset_bounding_box = False)
-                    vis.poll_events()
-                    vis.update_renderer()    
-                    cv2.waitKey(1)
+                    vis_wait_key(vis, 1)
                 VIS_TRAJ = False

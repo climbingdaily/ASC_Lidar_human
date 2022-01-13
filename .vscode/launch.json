@@ -9,7 +9,11 @@
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "args": [
+                "-m", "J:\\Human_motion\\visualization\\climbinggym002_step_1",
+                "climbinggym002"
+            ]
         }
     ]
 }

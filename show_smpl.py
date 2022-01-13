@@ -207,29 +207,29 @@ if __name__ == "__main__":
             if len(sys.argv) >=4:
                 plydir2 = sys.argv[3]
             # lidar_file = sys.argv[3]
+            start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0])
+            positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
+            scene_pcd, kdtree = load_scene(pcd_dir, file_name)
+            if not REMOVE:
+                vis.add_geometry(scene_pcd)
         else:
             print('python visualize_RT.py [-l] [lidar_traj_path]')
             print('python visualize_RT.py [-b] [bvh_path]')
             print('python visualize_RT.py [-c] [csv_pos_path] [csv_rot_path]')
             exit()
     geometies = []
-    scene_pcd, kdtree = load_scene(pcd_dir, file_name)
-    start_lidar_idx = int(np.loadtxt(lidar_file, dtype=np.float64)[0,0])
-    positions = np.loadtxt(lidar_file, dtype=np.float64)[:, 1:4]
-    if not REMOVE:
-        vis.add_geometry(scene_pcd)
     if key == '-l':
         rt_file = np.loadtxt(lidar_file, dtype=float)        
         R_init = R.from_quat(rt_file[0, 4: 8]).as_matrix()  #3*3
-        for i in range(0, rt_file.shape[0], 20):
+        for i in range(0, 500, 20):
             # 读取 i 帧的 RT
             R_lidar = R.from_quat(rt_file[i, 4: 8]).as_matrix()  #3*3
-            R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init)) # 乘第一帧的逆
+            # R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init)) # 乘第一帧的逆
             R_T = rt_file[i, 1:4].reshape(1,3)   #1*3
             R_lidar = R_lidar.T + R_T
             line_pcd, point_pcd = triangle_pcd(R_T, R_lidar)
             # geometies.append(line_pcd)
-            vis.add_geometry(line_pcd)
+            vis.add_geometry(line_pcd, reset_bounding_box=False)
             vis.poll_events()
             vis.update_renderer()
             cv2.waitKey(10)
@@ -262,6 +262,10 @@ if __name__ == "__main__":
             line_pcd, point_pcd = triangle_pcd(T_mocap, R_mocap)
             geometies.append(line_pcd)
 
+            vis.add_geometry(line_pcd, reset_bounding_box=False)
+            vis.poll_events()
+            vis.update_renderer()
+            cv2.waitKey(10)
     elif key == '-c':
         mocap_init = np.array([
             [-1, 0, 0],
@@ -277,18 +281,26 @@ if __name__ == "__main__":
         rot_data = np.asarray(rot_data) # 度
 
         R_init = R.from_euler('yxz', rot_data[0, 1:4], degrees=True).as_matrix()
-        R_init = np.matmul(mocap_init, R_init)
+        # R_init = mocap_init @ R_init
+
         for i in range(0, mocap_length, 100):
             R_mocap = R.from_euler('yxz', rot_data[i, 1:4], degrees=True).as_matrix()
             T_mocap = pos_data[i, 0].copy()
             
-            R_mocap = np.matmul(mocap_init, R_mocap)
-            T_mocap = np.matmul(mocap_init, T_mocap)
+            # R_mocap = mocap_init @ R_mocap
+            # T_mocap = mocap_init @ T_mocap
 
-            R_mocap = np.matmul(R_mocap, np.linalg.inv(R_init))
+            R_mocap = R_mocap @ np.linalg.inv(R_init)
             R_mocap = R_mocap.T + T_mocap
             line_pcd, point_pcd = triangle_pcd(T_mocap, R_mocap)
+            if i == 0:
+                vis.add_geometry(line_pcd)
+            else:
+                vis.add_geometry(line_pcd, reset_bounding_box=False)
 
+            vis.poll_events()
+            vis.update_renderer()
+            cv2.waitKey(10)
             geometies.append(line_pcd)
     elif key == '-m':
         meshfiles = os.listdir(plydir)
@@ -459,7 +471,7 @@ if __name__ == "__main__":
                         REMOVE = False
                     outname = os.path.join(imagedir, '{:04d}.jpg'.format(i))
                     vis.capture_screen_image(outname)
-
+    
     while True:
         with Timer('update renderer', True):
             # o3dcallback()
