@@ -296,11 +296,55 @@ def cal_mocap_smpl_trans():
     print('1832: ', bb-aa)
     print('2949: ', bbb-aaa)
 
+def make_bounding_box():
+    """
+    # 测试open3d的boundingbox函数
+    """    
+    import open3d as o3d
+    pcd = o3d.io.read_point_cloud("C:\\Users\\Daiyudi\\Desktop\\temp\\001121.pcd")
+    people = o3d.io.read_point_cloud("C:\\Users\\Daiyudi\\Desktop\\temp\\001121.ply")
+    print(pcd)#输出点云点的个数
+    print(people)#输出点云点的个数
+    aabb = people.get_axis_aligned_bounding_box()
+    aabb.color = (1,0,0)#aabb包围盒为红色
+    obb = people.get_oriented_bounding_box()
+    obb.color = (0,1,0)#obb包围盒为绿色
+
+    seg_pcd = pcd.crop(obb)
+    bg = pcd.select_by_index(
+        obb.get_point_indices_within_bounding_box(pcd.points), invert=True)
+    axis1 = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1, origin=aabb.get_center())
+    axis2 = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1, origin=obb.get_center())
+    axis2 = axis2.rotate(obb.R)
+    people.paint_uniform_color([0, 0, 1])
+    seg_pcd.paint_uniform_color([1, 0, 1])
+    bg.paint_uniform_color([0.5, 0.5, 0.5])
+
+    o3d.visualization.draw_geometries([bg, people, seg_pcd, axis1, axis2, aabb, obb])
+
+# make_bounding_box()
+
 # print('meand dist: ', np.asarray(tot_dist).mean())
-cal_checkpoiont()
-cal_mocap_smpl_trans()
+# cal_checkpoiont()
+# cal_mocap_smpl_trans()
 # file_path = 'E:\\SCSC_DATA\\HumanMotion\\visualization\\lab_building_lidar_filt_synced_offset.txt'
 # cal_dist(file_path, 1612)
 # cal_dist(file_path, 12224)
 # cal_dist(file_path, 9367)
 # cal_dist(file_path, 9265)
+
+import paramiko
+hostname = "10.24.80.240"
+port = 511
+username = 'dyd'
+password = 'dyd-123'
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect(hostname, port, username, password, compress=True)
+sftp_client = client.open_sftp()
+remote_file = sftp_client.open("/hdd/dyd/SemanticPOSS/sequences/03/calib.txt")#文件路径
+try:
+  for line in remote_file:
+    print(line)
+finally:
+  remote_file.close()

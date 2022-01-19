@@ -12,10 +12,11 @@ def save_video(path):
     """            
     strs = path.split('\\')[-1]
     # strs = sys.argv[2]
-    video_path = os.path.join(os.path.dirname(path), strs + '.avi')
-    video_path2 = os.path.join(os.path.dirname(path), strs + '.mp4')
+    video_path = os.path.join(os.path.dirname(path), strs + '.mp4')
+    video_path2 = os.path.join(os.path.dirname(path), strs + '.avi')
 
-    command = f"ffmpeg -f image2 -i {path}\\{strs}_%4d.jpg -b:v 10M -c:v h264 -r 20  {video_path}"
+    # command = f"ffmpeg -f image2 -i {path}\\{strs}_%4d.jpg -b:v 10M -c:v h264 -r 20  {video_path}"
+    command = f"ffmpeg -f image2 -i {path}\\%4d.jpg -b:v 10M -c:v h264 -r 30  {video_path2}"
     if not os.path.exists(video_path) and not os.path.exists(video_path2):
         run(command, shell=True)
 
