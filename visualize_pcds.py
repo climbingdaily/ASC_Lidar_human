@@ -5,26 +5,6 @@ import time
 import cv2
 import sys
 from o3dvis import o3dvis
-view = {
-    
-	"class_name" : "ViewTrajectory",
-	"interval" : 29,
-	"is_loop" : 'false',
-	"trajectory" : 
-	[
-		{
-			"boundingbox_max" : [ 21.234885999999999, 8.7522749999999991, 4.0378610000000004 ],
-			"boundingbox_min" : [ -16.570497, -43.161940999999999, -11.787841 ],
-			"field_of_view" : 60.0,
-			"front" : [ -0.21264672737025894, 0.8265871062578114, 0.52109032336731853 ],
-			"lookat" : [ 3.5715111529651553, -13.836228448141792, -8.448559395394982 ],
-			"up" : [ 0.059754191656269703, -0.52128847820400914, 0.85128594436373373 ],
-			"zoom" : 0.21999999999999981
-		}
-	],
-	"version_major" : 1,
-	"version_minor" : 0
-} # 近处的视角
 
 lidar_cap_view = {
 	"class_name" : "ViewTrajectory",

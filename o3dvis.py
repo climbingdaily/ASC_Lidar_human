@@ -2,7 +2,6 @@ import open3d as o3d
 import numpy as np
 import cv2
 import sys
-from scipy.spatial.transform import Rotation as R
 import os
 
 colors = {
@@ -320,9 +319,9 @@ class o3dvis():
             if not self.waitKey(10, helps=helps):
                 break
             helps = False
-            self.save_imgs(save_dir, strs + '_{:04d}.jpg'.format(count))
+            self.save_imgs(save_dir, strs + '_{:04d}.jpg'.format(count)) 
             count += 1
-            
+
         for s in sphere_list:
             self.remove_geometry(s, reset_bounding_box = False)
 
@@ -339,7 +338,7 @@ class o3dvis():
             return sphere_list
 
         for sphere in sphere_list:
-            vis.remove_geometry(sphere, reset_bounding_box = False)
+            self.remove_geometry(sphere, reset_bounding_box = False)
         sphere_list.clear()
         traj_files = os.listdir(plydir)
 
@@ -371,6 +370,7 @@ class o3dvis():
         # 轨迹可视化
         for sphere in sphere_list:
             self.add_geometry(sphere, reset_bounding_box = False)
+
         Keyword.VIS_TRAJ = False
         return sphere_list
 
