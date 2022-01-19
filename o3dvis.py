@@ -97,7 +97,7 @@ def stream_callback(vis):
 
 def pause_callback(vis):
     Keyword.PAUSE = not Keyword.PAUSE
-    print('Pause', Keyword.PAUSE)
+    # print('Pause', Keyword.PAUSE)
     return False
 
 def destroy_callback(vis):
@@ -143,13 +143,14 @@ def capture_image(vis):
 def print_help(is_print=True):
     if is_print:
         print('============Help info============')
-        print('Press SPACE to refresh visulization')
+        print('Press R to refresh visulization')
         print('Press Q to quit window')
         print('Press D to remove the scene')
         print('Press T to load and show traj file')
         print('Press F to stop current motion')
         print('Press . to turn on auto-screenshot ')
         print('Press , to set view zoom based on json file ')
+        print('Press SPACE to pause the stream')
         print('=================================')
 
 
@@ -165,30 +166,34 @@ class o3dvis():
     def init_vis(self, window_name):
         
         self.vis = o3d.visualization.VisualizerWithKeyCallback()
-        # vis.register_key_callback(ord(' '), pause_callback)
+        self.vis.register_key_callback(ord(" "), pause_callback)
         self.vis.register_key_callback(ord("Q"), destroy_callback)
         self.vis.register_key_callback(ord("D"), remove_scene_geometry)
-        self.vis.register_key_callback(ord(" "), read_dir_ply)
+        self.vis.register_key_callback(ord("R"), read_dir_ply)
         self.vis.register_key_callback(ord("T"), read_dir_traj)
         self.vis.register_key_callback(ord("F"), stream_callback)
         self.vis.register_key_callback(ord("."), save_imgs)
         self.vis.register_key_callback(ord(","), set_view)
         self.vis.create_window(window_name=window_name, width=1280, height=720)
 
+    def waitKey(self, key, helps = True):
+        print_help(helps)
+        while True:
+            self.vis.poll_events()
+            self.vis.update_renderer()
+            cv2.waitKey(key)
+            if Keyword.DESTROY:
+                self.vis.destroy_window()
+            if not Keyword.PAUSE:
+                break
+        return Keyword.READ
+
     def add_geometry(self, geometry, reset_bounding_box = True):
         self.vis.add_geometry(geometry, reset_bounding_box)
+        self.waitKey(10, helps=False)
 
     def remove_geometry(self, geometry, reset_bounding_box = True):
         self.vis.remove_geometry(geometry, reset_bounding_box)
-
-    def vis_wait_key(self, key, helps = True):
-        print_help(helps)
-        self.vis.poll_events()
-        self.vis.update_renderer()
-        cv2.waitKey(key)
-        if Keyword.DESTROY:
-            self.vis.destroy_window()
-        return Keyword.READ
 
     def set_view_zoom(self, info, count, steps):
         """根据参数设置vis的视场角
@@ -224,7 +229,15 @@ class o3dvis():
                     elif e == 'front':
                         ctr.set_front(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
                 break    
-                
+
+        elif 'trajectory' in info.keys():
+            self.vis.reset_view_point(True)
+            ctr.set_zoom(np.array(info['trajectory'][0]['zoom']))
+            ctr.set_lookat(np.array(info['trajectory'][0]['lookat']))
+            ctr.set_up(np.array(info['trajectory'][0]['up']))
+            ctr.set_front(np.array(info['trajectory'][0]['front']))
+
+        return False
         # for e in elements:
         #     if count > steps:
         #         break
@@ -304,16 +317,124 @@ class o3dvis():
 
             
             pre_mesh = mesh
-            if not self.vis_wait_key(10, helps=helps):
+            if not self.waitKey(10, helps=helps):
                 break
             helps = False
-            if Keyword.SAVE_IMG:
-                os.makedirs(save_dir, exist_ok=True)
-                
-                outname = os.path.join( save_dir, strs + '_{:04d}.jpg'.format(count))
-                self.vis.capture_screen_image(outname)
+            self.save_imgs(save_dir, strs + '_{:04d}.jpg'.format(count))
             count += 1
+            
         for s in sphere_list:
             self.remove_geometry(s, reset_bounding_box = False)
 
         return geometies
+    
+    def visualize_traj(self, plydir, sphere_list):
+        """[读取轨迹文件]
+
+        Args:
+            plydir ([str]): [description]
+            sphere_list ([list]): [description]
+        """        
+        if not Keyword.VIS_TRAJ:
+            return sphere_list
+
+        for sphere in sphere_list:
+            vis.remove_geometry(sphere, reset_bounding_box = False)
+        sphere_list.clear()
+        traj_files = os.listdir(plydir)
+
+        # 读取文件夹内所有的轨迹文件
+        for trajfile in traj_files:
+            if trajfile.split('.')[-1] != 'txt':
+                continue
+            print('name', trajfile)
+            if trajfile.split('_')[-1] == 'offset.txt':
+                color = 'red'
+            elif trajfile.split('_')[-1] == 'synced.txt':
+                color = 'yellow'
+            else:
+                color = 'blue'
+            trajfile = os.path.join(plydir, trajfile)
+            trajs = np.loadtxt(trajfile)[:,1:4]
+            traj_cloud = o3d.geometry.PointCloud()
+            # show as points
+            traj_cloud.points = Vector3dVector(trajs)
+            traj_cloud.paint_uniform_color(color)
+            sphere_list.append(traj_cloud)
+            # for t in range(1400, 2100, 1):
+            #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.03)
+            #     sphere.vertices = Vector3dVector(np.asarray(sphere.vertices) + trajs[t])
+            #     sphere.compute_vertex_normals()
+            #     sphere.paint_uniform_color(color)
+            #     sphere_list.append(sphere)
+
+        # 轨迹可视化
+        for sphere in sphere_list:
+            self.add_geometry(sphere, reset_bounding_box = False)
+        Keyword.VIS_TRAJ = False
+        return sphere_list
+
+    def set_view(self, view):
+        ctr = self.vis.get_view_control()
+        if view is not None:
+            # self.vis.reset_view_point(True)
+            ctr.set_zoom(np.array(view['trajectory'][0]['zoom']))
+            ctr.set_lookat(np.array(view['trajectory'][0]['lookat']))
+            ctr.set_up(np.array(view['trajectory'][0]['up']))
+            ctr.set_front(np.array(view['trajectory'][0]['front']))
+            return True
+        return False
+
+    def save_imgs(self, out_dir, filename):
+        """[summary]
+
+        Args:
+            out_dir ([str]): [description]
+            filename ([str]): [description]
+        """        
+        outname = os.path.join(out_dir, filename)
+        if Keyword.SAVE_IMG:
+            os.makedirs(out_dir, exist_ok=True)
+            self.vis.capture_screen_image(outname)
+
+    def visulize_point_clouds(self, file_path, skip = 150, view = None):
+        """[visulize the point clouds stream]
+
+        Args:
+            file_path (str): [description]
+            skip (int, optional): [description]. Defaults to 150.
+            view (dict): A open3d format viewpoint, you can get one by using 'ctrl+c' in the visulization window. Defaults to None.
+        """ 
+               
+        files = sorted(os.listdir(file_path))
+        pointcloud = o3d.geometry.PointCloud()
+        axis_pcd = o3d.geometry.TriangleMesh.create_coordinate_frame(size=3, origin=[0, 0, 0])
+
+        self.add_geometry(pointcloud, reset_bounding_box=False)
+        self.add_geometry(axis_pcd, reset_bounding_box=False)
+
+        Reset = True
+
+        for i, file_name in enumerate(files):
+            if i < skip:
+                continue
+            if file_name.endswith('.txt'):
+                pts = np.loadtxt(os.path.join(file_path, file_name))
+                pointcloud.points = o3d.utility.Vector3dVector(pts[:, :3])  
+            elif file_name.endswith('.pcd') or file_name.endswith('.ply'):
+                pcd = o3d.io.read_point_cloud(os.path.join(file_path, file_name))
+                pointcloud.points = pcd.points
+                pointcloud.colors = pcd.colors
+            else:
+                continue
+                
+            self.vis.update_geometry(pointcloud)
+
+            if Reset:
+                Reset = self.set_view_zoom(view, 0, 0)
+
+            self.waitKey(10, helps=False)
+            self.save_imgs(os.path.join(file_path, 'imgs'),
+                           '{:04d}.jpg'.format(i-skip))
+        while True:
+            self.waitKey(10, helps=False)

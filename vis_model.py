@@ -9,6 +9,7 @@ from bvh_tools.bvh_tool import Bvh
 from visualization.Timer import Timer
 import json
 import pickle as pkl
+from o3dvis import o3dvis, Keyword
 # sys.path.insert(0, './')
 # sys.path.insert(1, '../')
 
@@ -32,7 +33,6 @@ def load_scene(pcd_path, scene_name):
     print('Scene loaded...')
     return scene_pcd
 
-from o3dvis import o3dvis, colors, Keyword
 if __name__ == "__main__":
     
     lidar_file = "E:\\SCSC_DATA\HumanMotion\\1023\\shiyanlou002_lidar_filt_synced_offset.txt"
@@ -86,7 +86,6 @@ if __name__ == "__main__":
             line_pcd, point_pcd = triangle_pcd(R_T, R_lidar)
             # geometies.append(line_pcd)
             vis.add_geometry(line_pcd)
-            vis_wait_key(vis, 10)
             # geometies.append(point_pcd)
 
     elif key == '-b':
@@ -144,6 +143,7 @@ if __name__ == "__main__":
             line_pcd, point_pcd = triangle_pcd(T_mocap, R_mocap)
 
             geometies.append(line_pcd)
+    
     elif key == '-m':
         with open('.\\vertices\\all_new.json') as f:
             all_vertices = json.load(f)
@@ -159,17 +159,17 @@ if __name__ == "__main__":
     while True:
         with Timer('update renderer', True):
             # o3dcallback()
-            vis.vis_wait_key(10, helps=False)
+            vis.waitKey(10, helps=False)
             if Keyword.READ:
                 # 读取mesh文件
                 meshfiles = os.listdir(plydir)
                 for mesh in mesh_list:
                     vis.remove_geometry(mesh, reset_bounding_box = False)
                 mesh_list.clear()
-                mesh_l1 = []
-                mesh_l2 = []
-                mesh_l3 = []
-                mesh_l4 = []
+                mesh_l1 = []    # 无优化的结果
+                mesh_l2 = []    # 动捕的原始结果
+                mesh_l3 = []    # 优化的结果
+                mesh_l4 = []    # 其他类型
                 for plyfile in meshfiles:
                     if plyfile.split('.')[-1] != 'ply':
                         continue
@@ -200,40 +200,4 @@ if __name__ == "__main__":
 
                 Keyword.READ = False
 
-            if Keyword.VIS_TRAJ:
-                # 读取轨迹文件
-                for sphere in sphere_list:
-                    vis.remove_geometry(sphere, reset_bounding_box = False)
-                sphere_list.clear()
-                traj_files = os.listdir(plydir)
-
-                # 读取文件夹内所有的轨迹文件
-                for trajfile in traj_files:
-                    if trajfile.split('.')[-1] != 'txt':
-                        continue
-                    print('name', trajfile)
-                    if trajfile.split('_')[-1] == 'offset.txt':
-                        color = red
-                    elif trajfile.split('_')[-1] == 'synced.txt':
-                        color = yellow
-                    else:
-                        color = blue
-                    trajfile = os.path.join(plydir, trajfile)
-                    trajs = np.loadtxt(trajfile)[:,1:4]
-                    traj_cloud = o3d.geometry.PointCloud()
-                    # show as points
-                    traj_cloud.points = Vector3dVector(trajs)
-                    traj_cloud.paint_uniform_color(color)
-                    sphere_list.append(traj_cloud)
-                    # for t in range(1400, 2100, 1):
-                    #     sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.03)
-                    #     sphere.vertices = Vector3dVector(np.asarray(sphere.vertices) + trajs[t])
-                    #     sphere.compute_vertex_normals()
-                    #     sphere.paint_uniform_color(color)
-                    #     sphere_list.append(sphere)
-
-                # 轨迹可视化
-                for sphere in sphere_list:
-                    vis.add_geometry(sphere, reset_bounding_box = False)
-                    vis.vis_wait_key(1)
-                Keyword.VIS_TRAJ = False
+            sphere_list = vis.visualize_traj(plydir, sphere_list)
