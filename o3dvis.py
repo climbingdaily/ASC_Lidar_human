@@ -3,7 +3,44 @@ import numpy as np
 import cv2
 import sys
 import os
+import paramiko
+from pypcd import pypcd
 
+def client_server():
+    hostname = "10.24.80.240"
+    port = 511
+    username = 'dyd'
+    
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(hostname, port, username, compress=True)
+    return client
+
+def list_dir_remote(client, folder):
+    stdin, stdout, stderr = client.exec_command('ls ' + folder)
+    res_list = stdout.readlines()
+    return [i.strip() for i in res_list]
+
+def read_pcd_from_server(client, filepath):
+    sftp_client = client.open_sftp()
+    remote_file = sftp_client.open(filepath, mode='rb')  # 文件路径
+
+    try:
+        pc_pcd = pypcd.PointCloud.from_fileobj(remote_file)
+        pc = np.zeros((pc_pcd.pc_data.shape[0], 3))
+        pc[:, 0] = pc_pcd.pc_data['x']
+        pc[:, 1] = pc_pcd.pc_data['y']
+        pc[:, 2] = pc_pcd.pc_data['z']
+        if pc_pcd.fields[-1] == 'rgb':
+            append = pypcd.decode_rgb_from_pcl(pc_pcd.pc_data['rgb'])/255
+        else:
+            append = pc_pcd.pc_data[pc_pcd.fields[-1]].reshape(-1, 1)
+        
+        return np.concatenate((pc, append), axis=1)
+    except Exception as e:
+        print(f"Load {filepath} error")
+    finally:
+        remote_file.close()
 colors = {
     'yellow':[251/255, 217/255, 2/255],
     'red'   :[234/255, 101/255, 144/255],
@@ -397,7 +434,7 @@ class o3dvis():
             os.makedirs(out_dir, exist_ok=True)
             self.vis.capture_screen_image(outname)
 
-    def visulize_point_clouds(self, file_path, skip = 150, view = None):
+    def visulize_point_clouds(self, file_path, skip = 150, view = None, remote = False):
         """[visulize the point clouds stream]
 
         Args:
@@ -405,13 +442,17 @@ class o3dvis():
             skip (int, optional): [description]. Defaults to 150.
             view (dict): A open3d format viewpoint, you can get one by using 'ctrl+c' in the visulization window. Defaults to None.
         """ 
-               
-        files = sorted(os.listdir(file_path))
+        if remote:
+            client = client_server()
+            files = sorted(list_dir_remote(client, file_path))
+        else:
+            files = sorted(os.listdir(file_path))
+
         pointcloud = o3d.geometry.PointCloud()
         axis_pcd = o3d.geometry.TriangleMesh.create_coordinate_frame(size=3, origin=[0, 0, 0])
 
-        self.add_geometry(pointcloud, reset_bounding_box=False)
-        self.add_geometry(axis_pcd, reset_bounding_box=False)
+        self.add_geometry(axis_pcd)
+        self.add_geometry(pointcloud)
 
         Reset = True
 
@@ -422,9 +463,16 @@ class o3dvis():
                 pts = np.loadtxt(os.path.join(file_path, file_name))
                 pointcloud.points = o3d.utility.Vector3dVector(pts[:, :3])  
             elif file_name.endswith('.pcd') or file_name.endswith('.ply'):
-                pcd = o3d.io.read_point_cloud(os.path.join(file_path, file_name))
-                pointcloud.points = pcd.points
-                pointcloud.colors = pcd.colors
+                if remote:
+                    pcd = read_pcd_from_server(client, file_path + '/' + file_name)
+                    pointcloud.points = o3d.utility.Vector3dVector(pcd[:, :3])
+                    if pcd.shape[1] == 6:
+                        pointcloud.colors = o3d.utility.Vector3dVector(pcd[:, 3:])  
+                else:
+                    pcd = o3d.io.read_point_cloud(os.path.join(file_path, file_name))
+                    pointcloud.points = pcd.points
+                    pointcloud.colors = pcd.colors
+
             else:
                 continue
                 
@@ -436,5 +484,8 @@ class o3dvis():
             self.waitKey(10, helps=False)
             self.save_imgs(os.path.join(file_path, 'imgs'),
                            '{:04d}.jpg'.format(i-skip))
+        if remote:
+            client.close()
         while True:
             self.waitKey(10, helps=False)
+        

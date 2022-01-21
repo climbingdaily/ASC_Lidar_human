@@ -10,6 +10,16 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
+            "args":[
+                // "--hps_file"
+            ]
+        },
+        {
+            "name": "Python: 当前文件",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
             "args": [
                 "-m",
                 "J:\\Human_motion\\visualization\\climbinggym002_step_1",
@@ -22,7 +32,6 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            
             "args": [
                 "C:\\Users\\Daiyudi\\Desktop\\temp\\semantic_6"
             ]
