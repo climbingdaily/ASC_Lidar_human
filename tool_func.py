@@ -378,7 +378,7 @@ def read_pcd_from_server(filepath):
     finally:
         remote_file.close()
 
-def save_video(path):
+def imges_to_video(path):
     """输入文件夹图片所在文件夹, 利用ffmpeg生成视频
 
     Args:
@@ -555,11 +555,10 @@ if __name__ == '__main__':
         save_hps_file_to_txt(hps_file)
 
     if args.img_dir:
-        # save the video based on the imgs
-        save_video(args.file_name)
+        imges_to_video(args.file_name)
     
-        # pcd visualization
     if args.velodyne_dir:
+        # pcd visualization
         if args.file_name:
             velodyne_dir = args.file_name
         vis = o3dvis()
@@ -571,6 +570,7 @@ if __name__ == '__main__':
         visulize_scene_with_meshes(mesh_dir, scene_dir, scene)
 
     if args.remote_dir:
+        # visualize the pcd files on the remote server
         if args.file_name:
             remote_dir = args.file_name
         vis = o3dvis()
