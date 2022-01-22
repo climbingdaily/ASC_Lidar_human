@@ -9,7 +9,32 @@
             "type": "python",
             "request": "launch",
             "program": "${file}",
-            "console": "integratedTerminal"
-        }
+            "console": "integratedTerminal",
+            "args":[
+                // "--hps_file"
+            ]
+        },
+        {
+            "name": "Python: 当前文件",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "-m",
+                "J:\\Human_motion\\visualization\\climbinggym002_step_1",
+                "climbinggym002"
+            ]
+        },
+        {
+            "name": "Python: 点云序列可视化",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "C:\\Users\\Daiyudi\\Desktop\\temp\\semantic_6"
+            ]
+        },
     ]
 }

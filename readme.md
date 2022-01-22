@@ -34,11 +34,25 @@ python transform_lidar_traj.py [lidar_traj_path] [旋转矩阵地址]
 ```
 * 旋转矩阵为4 * 4
 * 可输入多个旋转矩阵文件
+
+## [转换ouster的pcap文件](lidar_traj_tools/ouster_pcap_to_txt.py)
+```
+pip install ouster-sdk #安装依赖库
+python ouster_pcap_to_txt.py *.pcap [frame_num]
+```
+#### 输入
+1. pcap地址
+2. 待转换的帧数（默认所有帧）
+#### 输出
+- txt文件将输出到pcap文件同目录下的文件夹内
+
+   
 # 3. visualization
 ### [利用open3D可视化RT](visualization/visualize_RT.py)
 ```
 python visualize_RT.py -l [lidar_traj_path] # 可视化lidar的轨迹，数据格式是 line_number*9
 python visualize_RT.py -b [bvh_path] #可视化bvh文件hip关节的轨迹
 python visualize_RT.py -c [csv_pos_path] [csv_rot_path] #可视化rot 和 pos 文件 hip关节的轨迹和旋转
+python visualize_RT.py -m [smpl_dir]  #可视化SMPL, 点云地址在代码内指定
 ```
 * 代码的51-54行指定了点云的位置，可以注释掉或者改成自己的点云文件地址

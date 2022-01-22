@@ -7,7 +7,9 @@ from scipy.spatial.transform import Rotation as R
 
 
 def loadjoint(frames, joint_number, frame_time=0.0333333):
-    head = frames[:, joint_number * 6:joint_number*6+3] / 100
+    joint = frames[:, joint_number * 6:joint_number*6+3] / 100
+    joint_rot = frames[:, joint_number * 6+3:joint_number*6+6]
+    rot = R.from_euler('yxz', joint_rot, degrees=True).as_quat()
     frame_number = np.arange(frames.shape[0])
     frame_number = frame_number.reshape((-1, 1))
     frame_time = frame_number * frame_time
@@ -18,36 +20,38 @@ def loadjoint(frames, joint_number, frame_time=0.0333333):
     rz = R.from_rotvec(np.pi * np.array([0, 0, 1])).as_matrix() # 绕Z转180
     rx = R.from_rotvec(270 * np.array([1, 0, 0]), degrees=True).as_matrix() # 绕X转270°
     init_rot = np.matmul(rx, rz) #先绕Z转180°，再绕X转270°
-    head = np.matmul(head, init_rot.T)
+    joint = np.matmul(init_rot, joint.T).T
 
-    # head = head[:, (0, 2, 1)]  # 交换y z 位置
-    # head[:,0] *= -1 # x取负值
+    save_joint = np.concatenate((frame_number, joint, rot, frame_time), axis=-1)
+    return save_joint
 
-    head = np.concatenate((head, frame_number, frame_time), axis=-1)
-    return head
+def get_mocap_root(bvh_file, save_root = True):
+    with open(bvh_file) as f:
+        mocap = Bvh(f.read())
 
+    #读取数据
+    frame_time = mocap.frame_time
+    frames = mocap.frames
+    frames = np.asarray(frames, dtype='float32')
 
-# 读取文件
-if len(sys.argv) == 2:
-    joints_file = sys.argv[1]
-else:
-    joints_file = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021上科大交流\\演示数据\\0712\\test_0712_ASC_corridor.bvh"
+    root = loadjoint(frames, 0, frame_time)  # 单位：米
 
-with open(joints_file) as f:
-    mocap = Bvh(f.read())
+    # 保存文件
+    if save_root:
+        dirname = os.path.dirname(bvh_file)
+        # file_name = os.path.basename(bvh_file)
+        file_name = Path(bvh_file).stem
+        save_file = os.path.join(dirname, file_name + '_root.txt')
+        field_fmts = ['%d', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.6f', '%.3f']
+        np.savetxt(save_file, root, fmt=field_fmts)
+        print('save root in: ', save_file)
+    return root
 
-#读取数据
-frame_time = mocap.frame_time
-frames = mocap.frames
-frames = np.asarray(frames, dtype='float32')
+if __name__ == '__main__':
+    # 读取文件
+    if len(sys.argv) == 2:
+        bvh_file = sys.argv[1]
+    else:
+        bvh_file = "e:\\SCSC_DATA\\HumanMotion\\0913\\001\\mocap\\0913daiyudi001_4672.bvh"
 
-head = loadjoint(frames, 0, frame_time)  # 单位：米
-
-# 保存文件
-dirname = os.path.dirname(joints_file)
-# file_name = os.path.basename(joints_file)
-file_name = Path(joints_file).stem
-save_file = os.path.join(dirname, file_name + '_root.txt')
-np.savetxt(save_file, head, fmt="%.3f")
-print('save root in: ', save_file)
-#python get_root.py [csv_file_path]
+    root = get_mocap_root(bvh_file, save_root=True)

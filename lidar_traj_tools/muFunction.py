@@ -1,37 +1,3 @@
-import pandas as pd  
-from scipy.spatial.transform import Rotation as R
-from pathlib import Path
-import numpy as np
-from bvh_tools.bvh_tool import Bvh
-import sys
-import os
-from smpl.smpl import SMPL
-from smpl.skele2smpl import get_pose_from_bvh
-from smpl.generate_ply import save_ply
-
-mocap_init = np.array([
-    [-1, 0, 0, 0],
-    [0, 0, 1, 0], 
-    [0, 1, 0, 0], 
-    [0, 0, 0, 1]])
-# mocap_init = R.from_matrix(mocap_init[:3,:3])
-
-# 时间同步帧
-lidar_key = 84 
-mocap_key = 554
-
-# mocap的帧率试试lidar的备注
-frame_scale = 5 # mocap是100Hz, lidar是20Hz
-
-def toRt(r, t):
-    '''
-    将3*3的R转成4*4的R
-    '''
-    share_vector = np.array([0,0,0,1], dtype=float)[np.newaxis, :]
-    r = np.concatenate((r, t.reshape(-1,1)), axis = 1)
-    r = np.concatenate((r, share_vector), axis=0)
-    return r
-
 def world_to_camera(X, K_EX):
     K_inv = np.linalg.inv(K_EX)
     return np.matmul(K_inv[:3,:3], X.T).T + K_inv[:3,3]
@@ -68,18 +34,6 @@ def project_to_2d(X, camera_params):
     XXX = XX*(radial + tan) + p*r2
 
     return f*XXX + c
-
-def save_pose(filepath, poses, skip=100):
-    dirname = os.path.dirname(filepath)
-    file_name = Path(filepath).stem
-    save_file = os.path.join(dirname, file_name + '_cloud.txt')
-    shape = poses.shape
-    num = np.arange(shape[0])
-    pose_num = num.repeat(shape[1]).reshape(shape[0], shape[1], 1)
-    poses = np.concatenate((poses, pose_num), -1)  # 添加行号到末尾
-    poses_save = poses[num % skip ==0].reshape(-1, 4) #每隔skip帧保存一下
-    np.savetxt(save_file, poses_save, fmt='%.6f')
-    print('保存pose到: ', save_file)
 
 def render_animation(keypoints, poses, fps, bitrate, azim, output, viewport, cloud=None,
                      limit=-1, downsample=1, size=5, input_video_path=None, input_video_skip=0, frame_num=None, key=None):
@@ -245,54 +199,10 @@ def render_animation(keypoints, poses, fps, bitrate, azim, output, viewport, clo
             'Unsupported output format (only .mp4 and .gif are supported)')
     plt.close()
 
-def save_in_same_csv(file_path, data, ss):
-    dirname = os.path.dirname(file_path)
-    file_name = Path(file_path).stem
-    save_file = os.path.join(dirname, file_name + ss + '.csv')
-    data.to_csv(save_file)
-    print('save csv in: ', save_file)
 
-def save_in_same_dir(file_path, data, ss):
-    dirname = os.path.dirname(file_path)
-    file_name = Path(file_path).stem
-    save_file = os.path.join(dirname, file_name + ss + '.txt')
-    np.savetxt(save_file, data, fmt='%.6f')
-    print('save traj in: ', save_file)
-
-if __name__ == '__main__':
-    if len(sys.argv) < 4:
-        print('请输入 [*pos.csv] [*rot.csv] [*lidar_traj.txt]')
-        pospath = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\mocap_csv\\02_with_lidar_pos.csv"
-        rotpath = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\mocap_csv\\02_with_lidar_rot.csv"
-        lidar_file = "e:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\数据采集\\0719\\02lidar\\traj_with_timestamp_变换后的轨迹.txt"
-        # in_file = 'sys.argv[4]'
-        # ex_file = 'sys.argv[5]'
-        # dist_file = 'sys.argv[5]'
-    else:
-        pospath = sys.argv[1]
-        rotpath = sys.argv[2]
-        lidar_file = sys.argv[3]
-        # in_file = sys.argv[4]
-        # ex_file = sys.argv[5]
-        # dist_file = sys.argv[5]
-
-    # K_IN = np.loadtxt(in_file, dtype=float)
-    # K_EX = np.loadtxt(ex_file, dtype=float)
-    # dist_coeff = np.loadtxt(dist_file, dtype=float)
-
-    # 1. 读取数据
-    lidar = np.loadtxt(lidar_file, dtype=float)
-    pos_data_csv=pd.read_csv(pospath, dtype=np.float32)
-    rot_data_csv=pd.read_csv(rotpath, dtype=np.float32)
-
-    pos_data = np.asarray(pos_data_csv) /100 # cm -> m
-    mocap_length = pos_data.shape[0]
-    pos_data = pos_data[:, 1:].reshape(mocap_length, -1, 3)
-    rot_data = np.asarray(rot_data_csv) # 度
-
-    # 2. 输入lidar中对应的帧和mocap中对应的帧, 求得两段轨迹中的公共部分
+def _get_overlap(lidar, rot_data, lidar_key, mocap_key):
     lidar_key = lidar_key - int(lidar[0,0]) 
-    
+    mocap_length = rot_data.shape[0]
     lidar_start = 0
     lidar_end = int(lidar[-1,0]) - int(lidar[0,0]) 
     mocap_start = mocap_key - (lidar_key - lidar_start) * frame_scale
@@ -304,75 +214,6 @@ if __name__ == '__main__':
     if (mocap_end) > mocap_length - 1:
         lidar_end = lidar_key + (mocap_length - 1 - mocap_key) // frame_scale
         mocap_end = mocap_length - 1 - (mocap_length - 1 - mocap_key) % frame_scale
-
-    '''
-    3. 将mocap配准到lidar，得到RT，应用于该帧的所有点
-    '''
-    lidar_first = R.from_quat(lidar[lidar_start, 4: 8]).as_matrix() #第一帧的矩阵
-    mocap_first = R.from_euler('yxz', rot_data[mocap_start, 1:4], degrees=True).as_matrix() ##第一帧的旋转矩阵
-    mocap_first = np.matmul(mocap_init[:3,:3], mocap_first) #第一帧的旋转矩阵，乘上 mocap坐标系 -> lidar坐标系的变换矩阵
-
-    position = np.zeros(shape=((lidar_end - lidar_start) + 1, pos_data.shape[1], 3))
-    new_rot = np.zeros(shape=(position.shape[0], rot_data.shape[1]))
-    for i in range(lidar_start, lidar_end + 1):
-        # 读取 i 帧的 RT
-        R_lidar = R.from_quat(lidar[i, 4: 8]).as_matrix()  #3*3
-        R_lidar = np.matmul(R_lidar, np.linalg.inv(lidar_first))
-        R_lidar = toRt(R_lidar, lidar[i, 1:4])   #4*4
-
-        # 读取对应 mocap的hip的rt
-        mocap_number = (i - lidar_key) * frame_scale + mocap_key # 对应的mocap的帧
-        R_mocap = R.from_euler('yxz', rot_data[mocap_number, 1:4], degrees=True).as_matrix() #原始数据
-        R_mocap = toRt(R_mocap, pos_data[mocap_number, 0].copy())
-
-        R_mocap = np.matmul(mocap_init, R_mocap) # 变换到lidar坐标系
-        R_mocap[:3,:3] = np.matmul(R_mocap[:3, :3], np.linalg.inv(mocap_first)) # 右乘第一帧旋转矩阵的逆
-
-        # 求mocap到Lidar的变换关系
-        mocap_to_lidar = np.matmul(R_lidar, np.linalg.inv(R_mocap))
-
-        # 将变换矩阵应用于单帧所有点
-        pos_init = np.matmul(mocap_init[:3,:3], pos_data[mocap_number].T) # 3 * m, 先坐标系变换
-        position[i] = np.matmul(mocap_to_lidar[:3,:3], pos_init).T + mocap_to_lidar[:3,3] # m * 3，再进行旋转平移
-
-        # 将mocap的所有关节的旋转都改变
-        new_rot[i] = rot_data[mocap_number]
-        # new_rot[i, 0] = rot_data[mocap_number, 0].copy()
-        # for j in range(rot_data.shape[1]//3):
-        #     R_ij = R.from_euler(
-        #         'yxz', rot_data[mocap_number, j*3 + 1:j*3 + 4], degrees=True).as_matrix()
-      
-            # R_ijj = np.matmul(mocap_init[:3,:3], R_ij)  
-            # R_ijj = np.matmul(mocap_to_lidar[:3,:3], R_ijj) # mocap->lidar 配准旋转矩阵
-            # R_ijj = np.matmul(mocap_init[:3,:3], R_ijj)  
-            # new_rot[i, j*3 + 1:j*3 + 4] = R.from_matrix(R_ijj).as_euler('yxz', degrees=True)
-
-    # 4. 转换SMPL 
-    import torch
-    from tqdm import tqdm
-    savedir = os.path.join(os.path.dirname(rotpath), 'SMPL')
-    new_rot_csv = pd.DataFrame(new_rot, columns = [col for col in rot_data_csv.columns])
-    
-    os.makedirs(savedir, exist_ok=True)
-    smpl_out_dir = os.path.join(savedir, Path(rotpath).stem)
-    os.makedirs(smpl_out_dir, exist_ok=True)
-    smpl = SMPL()
-    bar = tqdm(range(lidar_end - lidar_start + 1))
-    for count in bar:
-        vertices = smpl(torch.from_numpy(get_pose_from_bvh(
-            new_rot_csv, count, False)).unsqueeze(0).float(), torch.zeros((1, 10)))
-        vertices = vertices.squeeze().cpu().numpy()
-        translation = lidar[count, 1:4]
-        vertices = np.matmul(mocap_init[:3, :3], vertices.T)
-        vertices = np.matmul(mocap_to_lidar[:3, :3], vertices).T + translation
-        ply_save_path = os.path.join(smpl_out_dir, str(count) + '_smpl.ply')
-        save_ply(vertices,ply_save_path)
-        bar.set_description("Save number %d/%d ply in " % (count, lidar_end - lidar_start))
-    print('SMPL saved in: ', smpl_out_dir)
-
-    # 5. 保存pose
-    save_in_same_csv(rotpath, new_rot_csv, '_trans_RT')
-    save_in_same_dir(lidar_file, lidar[lidar_start:lidar_end+1], '_与mocap重叠部分') #保存有效轨迹
-    
-    save_pose(pospath, position, skip = 40)
-
+    print('LiDAR start frame to end: ', lidar_start, lidar_end)
+    print('Mocap start frame to end: ', mocap_start, mocap_end)
+    return lidar_start, lidar_end, mocap_start, mocap_end
