@@ -2,7 +2,7 @@
 # Author : Zhang.Jingyi
 import os
 import cv2
-import pcl
+# import pcl
 import numpy as np
 import yaml
 '''
@@ -14,32 +14,32 @@ ________________________,--._(___Y___)_,--._______________________
 '''
 
 
-class robosense_object(object):
-    '''Load and parse object data into a usable format.'''
+# class robosense_object(object):
+#     '''Load and parse object data into a usable format.'''
 
-    def __init__(self, root_dir):
-        '''root_dir contains training and testing folders'''
+#     def __init__(self, root_dir):
+#         '''root_dir contains training and testing folders'''
 
-        self.data_dir = os.path.join(root_dir, 'data')
+#         self.data_dir = os.path.join(root_dir, 'data')
 
-        self.image_dir = os.path.join(self.data_dir, 'image')
-        self.lidar_dir = os.path.join(self.data_dir, 'lidar')
+#         self.image_dir = os.path.join(self.data_dir, 'image')
+#         self.lidar_dir = os.path.join(self.data_dir, 'lidar')
 
-    def get_image(self, img_filename):
-        return cv2.imread(img_filename)
+#     def get_image(self, img_filename):
+#         return cv2.imread(img_filename)
 
-    def get_lidar(self, lidar_filename):
-        # scan = np.fromfile(lidar_filename, dtype=np.float32)
-        # scan = scan.reshape((-1,4))
-        # edited by xuelun
-        scan = pcl.load_XYZI(lidar_filename).to_array()[:, :4]
-        return scan
+#     def get_lidar(self, lidar_filename):
+#         # scan = np.fromfile(lidar_filename, dtype=np.float32)
+#         # scan = scan.reshape((-1,4))
+#         # edited by xuelun
+#         scan = pcl.load_XYZI(lidar_filename).to_array()[:, :4]
+#         return scan
 
-    def get_mocap(self, mocap_info):
-        skelenton_3d = np.zeros((69, 3), dtype=float)
-        skelenton_3d[0] = np.array(mocap_info[1:4])
-        skelenton_3d[1:] = np.array(mocap_info[13:]).reshape((68, 3))
-        return skelenton_3d
+#     def get_mocap(self, mocap_info):
+#         skelenton_3d = np.zeros((69, 3), dtype=float)
+#         skelenton_3d[0] = np.array(mocap_info[1:4])
+#         skelenton_3d[1:] = np.array(mocap_info[13:]).reshape((68, 3))
+#         return skelenton_3d
 
 
 class Calibration(object):
@@ -78,8 +78,8 @@ class Calibration(object):
         # extrinstic_matrix = yaml.load(f1, Loader=yaml.FullLoader)
         # camera_matrix = yaml.load(f2, Loader=yaml.FullLoader)
         # Projection matrix from rect camera coord to image2 coord
-        self.P = np.array([1001.5891335, 0., 953.6128327, 0.,
-                           0., 1000.9244526, 582.04816056, 0.,
+        self.P = np.array([1656.63, 0., 954.138, 0.,
+                           0., 1657.19, 558.474, 0.,
                            0., 0., 1., 0.])
 
         # self.P=camera_matrix['intrinsic_matrix']['data']
@@ -87,9 +87,9 @@ class Calibration(object):
         # Rigid transform from Robosense coord to reference camera coord
         # edited by xuelun
         self.V2C = np.array(
-            [-0.022845605917, -0.99949339352, 0.022159300388, -0.0026512677119,
-             -0.048575862249, -0.021029143708, -0.9985980977, 0.24298071602,
-             0.99855819254, -0.023889985732, -0.048070829873, 0.16285148859,
+            [0.993935, 0.109078, -0.013991, -2.64683,
+             -0.00589378, -0.0742049, -0.997226, 1.78104,
+             -0.109814, 0.99126, -0.0731119, -4.41062,
              0, 0, 0, 1])
         # self.V2C = extrinstic_matrix['intrinsic_matrix']['data']
         self.V2C = np.reshape(self.V2C, [4, 4])

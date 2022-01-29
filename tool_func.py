@@ -549,14 +549,17 @@ if __name__ == '__main__':
     scene='climbinggym002',
     remote_dir='/hdd/dyd/lidarcap/velodyne/6', 
 
+    # 读取hps的轨迹，保存成txt
     if args.hps_file:
         if args.file_name:
             hps_file = args.file_name
         save_hps_file_to_txt(hps_file)
 
+    # 将图片保存成视频
     if args.img_dir:
         imges_to_video(args.file_name)
     
+    # 可视化分割结果的点云
     if args.velodyne_dir:
         # pcd visualization
         if args.file_name:
@@ -564,11 +567,13 @@ if __name__ == '__main__':
         vis = o3dvis()
         vis.visulize_point_clouds(velodyne_dir, skip=50, view=lidar_cap_view)
 
+    # 可视化场景和human mesh
     if args.mesh_dir:
         if args.file_name:
             mesh_dir = args.file_name
         visulize_scene_with_meshes(mesh_dir, scene_dir, scene)
 
+    # 可视化远程的文件夹
     if args.remote_dir:
         # visualize the pcd files on the remote server
         if args.file_name:

@@ -13,6 +13,7 @@ import os
 import cv2
 import sys
 import argparse
+import open3d as o3d
 import csv
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -44,6 +45,7 @@ def get_lidar_in_image_fov(pc_robo, calib, xmin, ymin, xmax, ymax,
         (pts_2d[:, 1] < ymax) & (pts_2d[:, 1] >= ymin)
     fov_inds = fov_inds & (pc_robo[:, 0] > clip_distance)
     imgfov_pc_robo = pc_robo[fov_inds, :]
+    # imgfov_pc_robo = pc_robo
     if return_more:
         return imgfov_pc_robo, pts_2d, fov_inds
     else:
@@ -72,7 +74,8 @@ def show_lidar_on_image(pc_robo, img, calib, img_width, img_height):
     #         int(np.round(imgfov_pts_2d[i,1]))),
     #         2, color=tuple(color), thickness=-1)
 
-    depth_img = np.zeros_like(img)
+    # depth_img = np.zeros_like(img)
+    depth_img = img.copy()
     intensity_img = np.zeros_like(img)
     depth_np = np.zeros_like(img)
     intensity_np = np.zeros_like(img)
@@ -145,38 +148,38 @@ def mocap_image(image_file, mocap_info, calib, save_path):
 
 
 if __name__ == '__main__':
-    ROOT_PATH = args.ROOT_PATH
-    img_path = os.path.join(ROOT_PATH, 'images')
-    lidar_path = os.path.join(ROOT_PATH, 'lidar')
-    depth_path = os.path.join(ROOT_PATH, 'depth')
-    intensity_path = os.path.join(ROOT_PATH, 'intensity')
-    intensity_numpy_path = os.path.join(ROOT_PATH, 'intensity-numpy')
-    depth_numpy_path = os.path.join(ROOT_PATH, 'depth-numpy')
-    mocap_path = os.path.join(ROOT_PATH, 'mocap')
-    calib_path = os.path.join(ROOT_PATH, 'calib')
-    skelenton_2d = os.path.join(ROOT_PATH, 'skelenton_output')
-    calib = datas.Calibration(calib_path)
+    # ROOT_PATH = args.ROOT_PATH
+    # img_path = os.path.join(ROOT_PATH, 'images')
+    # lidar_path = os.path.join(ROOT_PATH, 'lidar')
+    # depth_path = os.path.join(ROOT_PATH, 'depth')
+    # intensity_path = os.path.join(ROOT_PATH, 'intensity')
+    # intensity_numpy_path = os.path.join(ROOT_PATH, 'intensity-numpy')
+    # depth_numpy_path = os.path.join(ROOT_PATH, 'depth-numpy')
+    # mocap_path = os.path.join(ROOT_PATH, 'mocap')
+    # calib_path = os.path.join(ROOT_PATH, 'calib')
+    # skelenton_2d = os.path.join(ROOT_PATH, 'skelenton_output')
+    # calib = datas.Calibration(calib_path)
 
-    from tqdm import tqdm
-    if args.mode == 'depth_image':
-        # for _, _ , files in os.walk(img_path):
-        #     for file in tqdm(files):
-        #         indx = file.strip('.jpg').strip('frame')
-        #         lidar_index = str(int(indx)//6+373)
-        #         image_file = os.path.join(img_path, file)
-        #         lidar_file = os.path.join(lidar_path, lidar_index+'.pcd')
-        #         depth_file = os.path.join(depth_path, file)
-        #         intensity_file = os.path.join(intensity_path, file)
-        #         depth_numpy = os.path.join(depth_numpy_path, indx)
-        #         intensity_numpy = os.path.join(intensity_numpy_path, indx)
-        #         depth_image(image_file, lidar_file, depth_file, intensity_file,
-        #                     depth_numpy, intensity_numpy)
-        image_file = os.path.join('data/image/00859.jpg')
-        lidar_file = os.path.join(
-            'data/2021-07-24-16-02-45-RS-0-Data-10000-12000/536.pcd')
-        depth_file = 'c529a186613fe044c67998e8ed0c7b2.jpg'
-        depth_numpy = 'c529a186613fe044c67998e8ed0c7b2'
-        depth_image(image_file, lidar_file, depth_file, depth_numpy)
+    # from tqdm import tqdm
+    # if args.mode == 'depth_image':
+    #     # for _, _ , files in os.walk(img_path):
+    #     #     for file in tqdm(files):
+    #     #         indx = file.strip('.jpg').strip('frame')
+    #     #         lidar_index = str(int(indx)//6+373)
+    #     #         image_file = os.path.join(img_path, file)
+    #     #         lidar_file = os.path.join(lidar_path, lidar_index+'.pcd')
+    #     #         depth_file = os.path.join(depth_path, file)
+    #     #         intensity_file = os.path.join(intensity_path, file)
+    #     #         depth_numpy = os.path.join(depth_numpy_path, indx)
+    #     #         intensity_numpy = os.path.join(intensity_numpy_path, indx)
+    #     #         depth_image(image_file, lidar_file, depth_file, intensity_file,
+    #     #                     depth_numpy, intensity_numpy)
+    #     image_file = os.path.join('data/image/00859.jpg')
+    #     lidar_file = os.path.join(
+    #         'data/2021-07-24-16-02-45-RS-0-Data-10000-12000/536.pcd')
+    #     depth_file = 'c529a186613fe044c67998e8ed0c7b2.jpg'
+    #     depth_numpy = 'c529a186613fe044c67998e8ed0c7b2'
+    #     depth_image(image_file, lidar_file, depth_file, depth_numpy)
 
     # if args.mode == 'mocap_image':
     #     mocap_csv = os.path.join(mocap_path, 'worldpos.csv')
@@ -190,3 +193,21 @@ if __name__ == '__main__':
     #             image_file = os.path.join(img_path, f'frame{image_index}.jpg')
     #             skelenton_2d_file = os.path.join(skelenton_2d, f'frame{image_index}.jpg')
     #             mocap_image(image_file, mocap_info[mocap_index], calib, skelenton_2d_file)
+    
+    img = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\rebuttal\\calibrate\\mi10video\\result\\0912.jpg'
+    img = cv2.imread(img)
+    pc = o3d.io.read_point_cloud('C:\\Users\\Daiyudi\\Desktop\\project.pcd').points
+    pc2 = o3d.io.read_triangle_mesh('C:\\Users\\Daiyudi\\Desktop\\temp\\rebuttal002_step_1\\1071_smpl.ply').vertices
+    pc = np.asarray(pc)
+    pc = np.concatenate((pc2, pc), axis=0)
+    append = pc[:, 2:3].copy()
+    pc = np.concatenate((pc, append), axis =1 )
+    # extrinsic_matrix = []
+    # intrinsic_matrix = []
+    calib = datas.Calibration('calib_path')
+    img, depth_img, intensity_img, depth_np, intensity_np = show_lidar_on_image(
+        pc, img, calib, 1920, 1080)
+    # import matplotlib.pyplot as plt
+    # print('')
+    cv2.imshow('ttt', depth_img)
+    
