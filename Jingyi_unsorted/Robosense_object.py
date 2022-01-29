@@ -87,9 +87,9 @@ class Calibration(object):
         # Rigid transform from Robosense coord to reference camera coord
         # edited by xuelun
         self.V2C = np.array(
-            [0.997696, 0.0667247, -0.0122799, -2.43125,
-             -0.00667824, -0.0835356, -0.996482, 1.87309,
-             -0.0675158, 0.994268, -0.0828975, -5.03095,
+            [0.997331, 0.0717456, -0.0135441, -2.56934,
+             - 0.00739391, -0.0853043, -0.996328, 1.91318,
+             - 0.0726375, 0.993768, -0.0845461, -5.06007,
              0, 0, 0, 1])
         # self.V2C = extrinstic_matrix['intrinsic_matrix']['data']
         self.V2C = np.reshape(self.V2C, [4, 4])

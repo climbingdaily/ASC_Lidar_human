@@ -196,10 +196,14 @@ if __name__ == '__main__':
     
     img = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\rebuttal\\calibrate\\mi10video\\result\\0912.jpg'
     img = cv2.imread(img)
-    # pc = o3d.io.read_point_cloud('C:\\Users\\Daiyudi\\Desktop\\project.pcd').points
-    pc = o3d.io.read_triangle_mesh('C:\\Users\\Daiyudi\\Desktop\\temp\\rebuttal002_step_1\\1071_smpl.ply').vertices
+    
+    pc = o3d.io.read_point_cloud('C:\\Users\\Daiyudi\\Desktop\\project.pcd').points
     pc = np.asarray(pc)
-    # pc = np.concatenate((pc2, pc), axis=0)
+    
+    pc2 = o3d.io.read_triangle_mesh('C:\\Users\\Daiyudi\\Desktop\\temp\\rebuttal002_step_1\\1071_smpl.ply').vertices
+    pc2 = np.asarray(pc2)
+    pc = np.concatenate((pc2, pc), axis=0)
+    
     append = pc[:, 2:3].copy()
     pc = np.concatenate((pc, append), axis =1 )
     # extrinsic_matrix = []
