@@ -43,7 +43,7 @@ def get_lidar_in_image_fov(pc_robo, calib, xmin, ymin, xmax, ymax,
     pts_2d = calib.project_robo_to_image(pc_robo)
     fov_inds = (pts_2d[:, 0] < xmax) & (pts_2d[:, 0] >= xmin) & \
         (pts_2d[:, 1] < ymax) & (pts_2d[:, 1] >= ymin)
-    fov_inds = fov_inds & (pc_robo[:, 0] > clip_distance)
+    # fov_inds = fov_inds & (pc_robo[:, 0] > clip_distance)
     imgfov_pc_robo = pc_robo[fov_inds, :]
     # imgfov_pc_robo = pc_robo
     if return_more:
@@ -196,10 +196,10 @@ if __name__ == '__main__':
     
     img = 'E:\\Daiyudi\\Documents\\OneDrive - stu.xmu.edu.cn\\I_2021_HumanMotion\\rebuttal\\calibrate\\mi10video\\result\\0912.jpg'
     img = cv2.imread(img)
-    pc = o3d.io.read_point_cloud('C:\\Users\\Daiyudi\\Desktop\\project.pcd').points
-    pc2 = o3d.io.read_triangle_mesh('C:\\Users\\Daiyudi\\Desktop\\temp\\rebuttal002_step_1\\1071_smpl.ply').vertices
+    # pc = o3d.io.read_point_cloud('C:\\Users\\Daiyudi\\Desktop\\project.pcd').points
+    pc = o3d.io.read_triangle_mesh('C:\\Users\\Daiyudi\\Desktop\\temp\\rebuttal002_step_1\\1071_smpl.ply').vertices
     pc = np.asarray(pc)
-    pc = np.concatenate((pc2, pc), axis=0)
+    # pc = np.concatenate((pc2, pc), axis=0)
     append = pc[:, 2:3].copy()
     pc = np.concatenate((pc, append), axis =1 )
     # extrinsic_matrix = []
@@ -210,4 +210,4 @@ if __name__ == '__main__':
     # import matplotlib.pyplot as plt
     # print('')
     cv2.imshow('ttt', depth_img)
-    
+    cv2.waitKey()

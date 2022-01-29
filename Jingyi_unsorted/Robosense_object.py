@@ -78,8 +78,8 @@ class Calibration(object):
         # extrinstic_matrix = yaml.load(f1, Loader=yaml.FullLoader)
         # camera_matrix = yaml.load(f2, Loader=yaml.FullLoader)
         # Projection matrix from rect camera coord to image2 coord
-        self.P = np.array([1656.63, 0., 954.138, 0.,
-                           0., 1657.19, 558.474, 0.,
+        self.P = np.array([1618.47, 0., 1022.22, 0.,
+                           0., 1614.15, 569.164, 0.,
                            0., 0., 1., 0.])
 
         # self.P=camera_matrix['intrinsic_matrix']['data']
@@ -87,9 +87,9 @@ class Calibration(object):
         # Rigid transform from Robosense coord to reference camera coord
         # edited by xuelun
         self.V2C = np.array(
-            [0.993935, 0.109078, -0.013991, -2.64683,
-             -0.00589378, -0.0742049, -0.997226, 1.78104,
-             -0.109814, 0.99126, -0.0731119, -4.41062,
+            [0.997696, 0.0667247, -0.0122799, -2.43125,
+             -0.00667824, -0.0835356, -0.996482, 1.87309,
+             -0.0675158, 0.994268, -0.0828975, -5.03095,
              0, 0, 0, 1])
         # self.V2C = extrinstic_matrix['intrinsic_matrix']['data']
         self.V2C = np.reshape(self.V2C, [4, 4])
