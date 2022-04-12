@@ -538,16 +538,16 @@ if __name__ == '__main__':
                         help="scene's file name")
 
     # 输入待读取的文件夹
-    parser.add_argument('--file_name', '-f', type=str,
+    parser.add_argument('--file-name', '-f', type=str,
                         help='A file or a directory', default=None)
     args, opts = parser.parse_known_args()
 
     hps_file='E:\\SCSC_DATA\\HumanMotion\\HPS\\result'
-    velodyne_dir='C:\\Users\\Daiyudi\\Desktop\\temp\\semantic_26', 
-    scene_dir='J:\\Human_motion\\visualization',
-    mesh_dir='J:\\Human_motion\\visualization\\climbinggym002_step_1',
-    scene='climbinggym002',
-    remote_dir='/hdd/dyd/lidarcap/velodyne/6', 
+    velodyne_dir='C:\\Users\\Daiyudi\\Desktop\\temp\\semantic_26'
+    scene_dir='J:\\Human_motion\\visualization'
+    mesh_dir='J:\\Human_motion\\visualization\\climbinggym002_step_1'
+    scene='climbinggym002'
+    remote_dir='/hdd/dyd/lidarcap/velodyne/6'
 
     # 读取hps的轨迹，保存成txt
     if args.hps_file:
@@ -565,7 +565,7 @@ if __name__ == '__main__':
         if args.file_name:
             velodyne_dir = args.file_name
         vis = o3dvis()
-        vis.visulize_point_clouds(velodyne_dir, skip=50, view=lidar_cap_view)
+        vis.visulize_point_clouds(velodyne_dir, skip=5, view=lidar_cap_view)
 
     # 可视化场景和human mesh
     if args.mesh_dir:

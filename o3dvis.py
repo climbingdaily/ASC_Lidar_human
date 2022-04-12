@@ -6,11 +6,7 @@ import os
 import paramiko
 from pypcd import pypcd
 
-def client_server():
-    hostname = "10.24.80.240"
-    port = 511
-    username = 'dyd'
-    
+def client_server(username = 'dyd', hostname = "10.24.80.241", port = 911):
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     client.connect(hostname, port, username, compress=True)
@@ -41,6 +37,8 @@ def read_pcd_from_server(client, filepath):
         print(f"Load {filepath} error")
     finally:
         remote_file.close()
+
+        
 colors = {
     'yellow':[251/255, 217/255, 2/255],
     'red'   :[234/255, 101/255, 144/255],
@@ -128,7 +126,7 @@ def save_imgs(vis):
 def stream_callback(vis):
     # 以视频流方式，更新式显示mesh
     Keyword.VIS_STREAM = not Keyword.VIS_STREAM
-    # print('VIS_STREAM', VIS_STREAM)
+    print('VIS_STREAM', Keyword.VIS_STREAM)
     return False
 
 def pause_callback(vis):
@@ -224,9 +222,9 @@ class o3dvis():
                 break
         return Keyword.READ
 
-    def add_geometry(self, geometry, reset_bounding_box = True):
+    def add_geometry(self, geometry, reset_bounding_box = True, waitKey = 10):
         self.vis.add_geometry(geometry, reset_bounding_box)
-        self.waitKey(10, helps=False)
+        self.waitKey(waitKey, helps=False)
 
     def remove_geometry(self, geometry, reset_bounding_box = True):
         self.vis.remove_geometry(geometry, reset_bounding_box)
@@ -290,12 +288,32 @@ class o3dvis():
         #     # elif e == 'field_of_view':
             #     ctr.change_field_of_view(z1 + count * (z2-z1) / (steps - 1))
     
+    def add_mesh_together(self, plydir, mesh_list, color):
+        """_summary_
+
+        Args:
+            plydir (_type_): _description_
+            mesh_list (_type_): _description_
+            color (_type_): _description_
+        """
+        geometies = []
+        for mesh_file in mesh_list:
+            plyfile = os.path.join(plydir, mesh_file)
+            # print(plyfile)
+            mesh = o3d.io.read_triangle_mesh(plyfile)
+            mesh.compute_vertex_normals()
+            mesh.paint_uniform_color(colors[color])
+            # mesh.vertices = Vector3dVector(np.array(mesh.vertices) - trajs[num[i],1:4] + mocap_trajs[num[i],1:4])
+            geometies.append(mesh)
+            self.add_geometry(mesh, reset_bounding_box = False, waitKey=0)
+        return geometies
+
     def add_mesh_by_order(self, plydir, mesh_list, color, strs='render', order = True, start=None, end=None, info=None):
         """[summary]
 
         Args:
-            plydir ([str]): [description]
-            mesh_list ([list]): [description]
+            plydir ([str]): directory name of the files
+            mesh_list ([list]): file name list
             color ([str]): [red, yellow, green, blue]
             strs (str, optional): [description]. Defaults to 'render'.
             order (bool, optional): [description]. Defaults to True.
@@ -339,7 +357,7 @@ class o3dvis():
             if Keyword.VIS_STREAM and pre_mesh is not None:
                 self.remove_geometry(pre_mesh, reset_bounding_box = False)
                 geometies.pop()
-            Keyword.VIS_STREAM = True
+            Keyword.VIS_STREAM = True # 
             geometies.append(mesh)
             self.add_geometry(mesh, reset_bounding_box = False)
                 
@@ -435,12 +453,14 @@ class o3dvis():
             self.vis.capture_screen_image(outname)
 
     def visulize_point_clouds(self, file_path, skip = 150, view = None, remote = False):
-        """[visulize the point clouds stream]
+        """visulize the point clouds stream
 
         Args:
             file_path (str): [description]
-            skip (int, optional): [description]. Defaults to 150.
-            view (dict): A open3d format viewpoint, you can get one by using 'ctrl+c' in the visulization window. Defaults to None.
+            skip (int, optional): Defaults to 150.
+            view (dict): A open3d format viewpoint, 
+                         you can get one view by using 'ctrl+c' in the visulization window. 
+                         Default None.
         """ 
         if remote:
             client = client_server()
@@ -456,9 +476,16 @@ class o3dvis():
 
         Reset = True
 
+        mesh_list = []
+
         for i, file_name in enumerate(files):
             if i < skip:
                 continue
+
+            for mesh in mesh_list:
+                self.remove_geometry(mesh, reset_bounding_box = False)
+            mesh_list.clear()
+
             if file_name.endswith('.txt'):
                 pts = np.loadtxt(os.path.join(file_path, file_name))
                 pointcloud.points = o3d.utility.Vector3dVector(pts[:, :3])  
@@ -472,6 +499,13 @@ class o3dvis():
                     pcd = o3d.io.read_point_cloud(os.path.join(file_path, file_name))
                     pointcloud.points = pcd.points
                     pointcloud.colors = pcd.colors
+                    
+                    # ! Temp code, for visualization test
+                    mesh_dir = os.path.join(os.path.join(os.path.dirname(
+                        file_path), 'instance_human'), file_name.split('.')[0])
+                    if os.path.exists(mesh_dir):
+                        mesh_list += self.add_mesh_together(
+                            mesh_dir, os.listdir(mesh_dir), 'blue')
 
             else:
                 continue
