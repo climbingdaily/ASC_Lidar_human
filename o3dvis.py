@@ -5,6 +5,7 @@ import sys
 import os
 import paramiko
 from pypcd import pypcd
+import matplotlib.pyplot as plt
 
 def client_server(username = 'dyd', hostname = "10.24.80.241", port = 911):
     client = paramiko.SSHClient()
@@ -479,6 +480,7 @@ class o3dvis():
         mesh_list = []
 
         for i, file_name in enumerate(files):
+            print(f'Processing {file_name}')
             if i < skip:
                 continue
 
@@ -498,6 +500,7 @@ class o3dvis():
                 else:
                     pcd = o3d.io.read_point_cloud(os.path.join(file_path, file_name))
                     pointcloud.points = pcd.points
+                    # print(len(pcd.poits))
                     pointcloud.colors = pcd.colors
                     
                     # ! Temp code, for visualization test
@@ -506,10 +509,21 @@ class o3dvis():
                     if os.path.exists(mesh_dir):
                         mesh_list += self.add_mesh_together(
                             mesh_dir, os.listdir(mesh_dir), 'blue')
-
             else:
                 continue
                 
+            # ! if cluster the point cloud and visualize it
+            # labels = np.array(pointcloud.cluster_dbscan(eps=0.4, min_points=20))
+            # max_label = labels.max()
+            # # for i in range(max_label):
+            # #     list[np.where(labels == i)[0]]
+            # print(f"point cloud has {max_label + 1} clusters")
+
+            # colors = plt.get_cmap("tab20")(
+            #     labels / (max_label if max_label > 0 else 1))
+            # colors[labels < 0] = 0
+            # pointcloud.colors = o3d.utility.Vector3dVector(colors[:, :3])
+
             self.vis.update_geometry(pointcloud)
 
             if Reset:
