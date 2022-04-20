@@ -225,7 +225,8 @@ class o3dvis():
 
     def add_geometry(self, geometry, reset_bounding_box = True, waitKey = 10):
         self.vis.add_geometry(geometry, reset_bounding_box)
-        self.waitKey(waitKey, helps=False)
+        if waitKey > 0:
+            self.waitKey(waitKey, helps=False)
 
     def remove_geometry(self, geometry, reset_bounding_box = True):
         self.vis.remove_geometry(geometry, reset_bounding_box)

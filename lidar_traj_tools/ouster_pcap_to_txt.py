@@ -1,11 +1,12 @@
 from ouster import client
 import numpy as np
-from ouster import pcap
-from contextlib import closing
-from more_itertools import nth
+from ouster import pcap #pip install ouster-sdk
 import os
-import sys
 from itertools import islice
+import configargparse
+
+# from contextlib import closing
+# from more_itertools import nth
 
 # with closing(client.Scans(source)) as scans:
 #     scan = nth(scans, 50)
@@ -17,7 +18,8 @@ from itertools import islice
 
 def pcap_to_txt(source: client.PacketSource,
                 metadata: client.SensorInfo,
-                num: int = 0,
+                start_idx: int = 0,
+                end_idx: int = -1,
                 txt_dir: str = ".",
                 txt_base: str = "pcap_out",
                 txt_ext: str = "txt"):
@@ -32,7 +34,8 @@ def pcap_to_txt(source: client.PacketSource,
     Args:
         pcap_path: path to the pcap file
         metadata_path: path to the .json with metadata (aka :class:`.SensorInfo`)
-        num: number of scans to save from pcap to csv files
+        start_idx: start index of scans to save from pcap to csv files
+        end_idx: end index of scans to save from pcap to csv files
         csv_dir: path to the directory where csv files will be saved
         csv_base: string to use as the base of the filename for pcap output
         csv_ext: file extension to use, "csv" by default
@@ -50,29 +53,33 @@ def pcap_to_txt(source: client.PacketSource,
     xyzlut = client.XYZLut(metadata)
 
     # create an iterator of LidarScans from pcap and bound it if num is specified
-    # scans = iter(client.Scans(source))
-    scans = client.Scans(source)
-    if num > 0:
-        scans = islice(scans, num)
-    idx = -1
-    for scan in scans:
-        idx += 1
-        if idx < 7000:
-            print('idx: ', idx)
-            continue
-    # for idx, scan in enumerate(scans):
+    scans = iter(client.Scans(source))
+    # if end_idx <= 0:
+        # import more_itertools
+        # end_idx = more_itertools.ilen(scans)
+    if end_idx > 0:
+        scans = islice(scans, end_idx)
 
+
+    for idx, scan in enumerate(scans):
+
+        if idx < start_idx:
+            print(f'\rSkip {idx} frames...', end='', flush=True)
+            continue
         # copy per-column timestamps for each channel
         col_timestamps = scan.header(client.ColHeader.TIMESTAMP)
         timestamps = np.tile(col_timestamps, (scan.h, 1))
 
-        # grab channel data
-        fields_values = [scan.field(ch) for ch in client.ChanField]
 
         # use integer mm to avoid loss of precision casting timestamps
         xyz = xyzlut(scan)
         channel = np.arange(xyz.shape[0]).reshape(-1,1)
         channel = np.repeat(channel, xyz.shape[1], axis=1)
+
+        # grab channel data
+        print(client.ChanField)
+        fields_values = [scan.field(ch) for ch in client.ChanField]
+        
         # get all data as one H x W x 8 int64 array for savetxt()
         frame = np.dstack((xyz, *fields_values, timestamps, channel)) 
 
@@ -81,7 +88,7 @@ def pcap_to_txt(source: client.PacketSource,
 
         # write csv out to file
         # csv_path = os.path.join(csv_dir, f'{csv_base}_{idx:06d}.{csv_ext}')
-        save_path = os.path.join(txt_dir, f'{idx:06d}.txt')
+        # save_path = os.path.join(txt_dir, f'{idx:06d}.txt')
 
         # header = '\n'.join([f'frame num: {idx}', field_names])
 
@@ -100,31 +107,37 @@ def pcap_to_txt(source: client.PacketSource,
             save_frame = save_frame[order] 
             # np.savetxt(save_path, save_frame, fmt=field_fmts)
             
-            txt_name = f'{save_frame[0,4]:.3f}'.replace('.', '_') + '.txt'
+            txt_name = f'{save_frame[0,4]:4.3f}'.replace('.', '_') + '.txt'
             save_path = os.path.join(txt_dir, txt_name)
             np.savetxt(save_path, save_frame, fmt=field_fmts)
             
-            print(f'\rwrite frame #{idx}, to file: {save_path}', end="", flush=True)
-            
+            print(f'\rwrite frame #{(idx)}/{end_idx - 1}, to file: {save_path}', end="", flush=True)
         
 if __name__ == '__main__':
-    frame_num = 0
-    if len(sys.argv) < 2:
-        print('请输入 [*.pcap] [frame_num]')
-        pcap_path = 'e:\\SCSC_DATA\\HumanMotion\\0821\\20210821daoyudi2.pcap'
-    elif len(sys.argv) == 2:
-        pcap_path = sys.argv[1]
-    elif len(sys.argv) == 3:
-        pcap_path = sys.argv[1]
-        frame_num = sys.argv[2]
 
-    metadata_path = '.\\lidar_traj_tools\\live-1024x20.json'
+    parser = configargparse.ArgumentParser()
+    parser.add_argument("--start_idx", '-S', type=int, default=0)
+    parser.add_argument("--end_idx", '-E', type=int, default=-1)
+    parser.add_argument("--pcap_path", '-P', type=str, required=True)
+    args = parser.parse_args()
+
+    print('Processing pcap...')
+    # print('File path: ', args.file_path)
+    # print('File name', args.file_name)
+    print('start_idx', args.start_idx)
+    print('end_idx', args.end_idx)
+    if args.pcap_path:
+        pcap_path = args.pcap_path
+    else:
+        print('Please input pcap path!')
+        # pcap_path = os.path.join(args.file_path, args.file_name + '.pcap')
+
+    metadata_path = 'live-1024x20.json'
     with open(metadata_path, 'r') as f:
         metadata = client.SensorInfo(f.read())
     source = pcap.Pcap(pcap_path, metadata)
+    
+    dir_name = args.pcap_path.replace('.pcap', '') + '_lidar_frames'
+    os.makedirs(dir_name, exist_ok=True)
 
-    from pathlib import Path
-    dir_name = os.path.dirname(pcap_path)
-    file_name = Path(pcap_path).stem
-    dir_name = os.path.join(dir_name, file_name + '_frames')
-    pcap_to_txt(source, metadata, num=frame_num, txt_dir=dir_name)
+    pcap_to_txt(source, metadata, start_idx=args.start_idx, end_idx=args.end_idx, txt_dir=dir_name)
