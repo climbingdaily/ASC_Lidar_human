@@ -6,6 +6,7 @@ import os
 import paramiko
 from pypcd import pypcd
 import matplotlib.pyplot as plt
+from util.segmentation import Segmentation
 
 def client_server(username = 'dyd', hostname = "10.24.80.241", port = 911):
     client = paramiko.SSHClient()
@@ -304,7 +305,8 @@ class o3dvis():
             # print(plyfile)
             mesh = o3d.io.read_triangle_mesh(plyfile)
             mesh.compute_vertex_normals()
-            mesh.paint_uniform_color(colors[color])
+            # mesh.paint_uniform_color(colors[color])
+            mesh.paint_uniform_color(plt.get_cmap("tab20")(int(mesh_file.split('.')[0]))[:3])
             # mesh.vertices = Vector3dVector(np.array(mesh.vertices) - trajs[num[i],1:4] + mocap_trajs[num[i],1:4])
             geometies.append(mesh)
             self.add_geometry(mesh, reset_bounding_box = False, waitKey=0)
@@ -512,7 +514,17 @@ class o3dvis():
                             mesh_dir, os.listdir(mesh_dir), 'blue')
             else:
                 continue
-                
+            
+            # ! Segment plane
+            # pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
+            # pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            # plane_model, inliers = pointcloud.segment_plane(distance_threshold=0.1, ransac_n=3, num_iterations=1200)
+            
+            # temp_cloud = pointcloud.select_by_index(inliers, invert=True)
+            # pointcloud.points = temp_cloud.points
+            # pointcloud.colors = temp_cloud.colors
+            # pointcloud.normals= temp_cloud.normals
+
             # ! if cluster the point cloud and visualize it
             # labels = np.array(pointcloud.cluster_dbscan(eps=0.4, min_points=20))
             # max_label = labels.max()

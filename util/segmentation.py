@@ -259,7 +259,7 @@ def creat_vis():
 
 if __name__ == "__main__":
     Vector3dVector = o3d.utility.Vector3dVector
-    import pyransac3d as pyrsc
+    # import pyransac3d as pyrsc
     vis = creat_vis()
     idx = 760
     # pcd_file = f"E:\\SCSC_DATA\HumanMotion\\1023\\ouster_test.pcd"

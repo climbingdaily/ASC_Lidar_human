@@ -308,6 +308,11 @@ def load_scene(pcd_path, scene_name):
     print('Scene loaded...')
     return scene_pcd
 
+def ransac(scene_pts, distance_threshold=0.05):
+    from util.segmentation import Segmentation
+    seg_pcd = Segmentation(scene_pts)
+    plane_equations, segments, segments_idx, rest = seg_pcd.run(1, distance_threshold)
+
 def visulize_scene_with_meshes(plydir, pcd_dir, scene_name):
     """ 载入场景点云和生成的human meshes
 
@@ -399,7 +404,7 @@ if __name__ == '__main__':
     scene_dir='J:\\Human_motion\\visualization'
     mesh_dir='J:\\Human_motion\\visualization\\climbinggym002_step_1'
     scene='climbinggym002'
-    remote_dir='/hdd/dyd/lidarcap/velodyne/6'
+    remote_dir='/hdd/dyd/lidarhumanscene/0417-03/human_semantic'
 
     # 读取hps的轨迹，保存成txt
     if args.hps_file:
@@ -431,5 +436,5 @@ if __name__ == '__main__':
         if args.file_name:
             remote_dir = args.file_name
         vis = o3dvis()
-        vis.visulize_point_clouds(remote_dir, skip=50, view=lidar_cap_view, remote = True)
+        vis.visulize_point_clouds(remote_dir, skip=0, view=lidar_cap_view, remote = True)
 
