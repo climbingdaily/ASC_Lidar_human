@@ -516,14 +516,15 @@ class o3dvis():
                 continue
             
             # ! Segment plane
-            # pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
-            # pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
-            # plane_model, inliers = pointcloud.segment_plane(distance_threshold=0.1, ransac_n=3, num_iterations=1200)
-            
-            # temp_cloud = pointcloud.select_by_index(inliers, invert=True)
-            # pointcloud.points = temp_cloud.points
-            # pointcloud.colors = temp_cloud.colors
-            # pointcloud.normals= temp_cloud.normals
+            pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
+            pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            for i in range(6):
+                _, inliers = pointcloud.segment_plane(distance_threshold=0.12, ransac_n=3, num_iterations=1200)
+                
+                temp_cloud = pointcloud.select_by_index(inliers, invert=True)
+                pointcloud.points = temp_cloud.points
+                pointcloud.colors = temp_cloud.colors
+                pointcloud.normals= temp_cloud.normals
 
             # ! if cluster the point cloud and visualize it
             # labels = np.array(pointcloud.cluster_dbscan(eps=0.4, min_points=20))

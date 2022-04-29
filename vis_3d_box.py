@@ -143,7 +143,7 @@ def load_boxes(dets, data_root_path = None, remote = False):
 
         # ! Temp code, for visualization test
         mesh_dir = os.path.join(os.path.join(
-            data_root_path, 'segment_by_tracking'), f'{idx:04d}')
+            data_root_path, 'segment_by_tracking_01'), f'{idx:04d}')
         if os.path.exists(mesh_dir):
             mesh_list += vis.add_mesh_together(
                 mesh_dir, os.listdir(mesh_dir), plt.get_cmap("tab20")(idx)[:3])
@@ -168,6 +168,7 @@ def load_boxes(dets, data_root_path = None, remote = False):
                 #     bbox.color = np.array([0, 0, 1])
                 # elif score[score>0.6][i] >= 0.6:
                 #     bbox.color = np.array([1, 0, 0])
+
                 bbox.color = cmap[int(obj_id[i]) % len(cmap)] / 255
                 boxes_list.append(bbox)
                 vis.add_geometry(bbox, reset_bounding_box = False, waitKey=0)
@@ -207,6 +208,6 @@ if __name__ == '__main__':
 
         load_boxes(dets, args.box_dir, remote=True)
     else:
-        with open(args.box_dir, 'rb') as f:
+        with open(os.path.join(args.box_dir, 'tracking_results.pkl'), 'rb') as f:
             dets = pkl.load(f)
         load_boxes(dets, args.box_dir)

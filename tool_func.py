@@ -379,17 +379,17 @@ if __name__ == '__main__':
     parser.add_argument('--type', '-T', type=int, default = 3,
                         help='Function type')
 
-    parser.add_argument('--hps-file', action='store_true',
+    parser.add_argument('--hps-file', '-H', action='store_true',
                         help='run directory',)
-    parser.add_argument('--remote-dir', action='store_true',
+    parser.add_argument('--remote-dir', '-R', action='store_true',
                         help='The remoted directory of pcd files')
-    parser.add_argument('--velodyne-dir', action='store_true',
+    parser.add_argument('--velodyne-dir', '-V', action='store_true',
                         help='The local directory of pcd files')
-    parser.add_argument('--img-dir', action='store_true',
+    parser.add_argument('--img-dir', '-I', action='store_true',
                         help='A directroy containing imgs')
-    parser.add_argument('--mesh-dir', action='store_true',
+    parser.add_argument('--mesh-dir', '-M', action='store_true',
                         help='A directroy containing human mesh files')
-    parser.add_argument('--scene-dir', action='store_true',
+    parser.add_argument('--scene-dir', '-S', action='store_true',
                         help='A directroy containing scene pcd files')
     parser.add_argument('--scene', action='store_true',
                         help="scene's file name")
