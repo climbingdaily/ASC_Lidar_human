@@ -1,15 +1,17 @@
 # from Viewer.viewer.viewer import Viewer
 # from curses import flash
 # from distutils.command.build_scripts import first_line_re
+from tkinter import CENTER
 import numpy as np
 import pickle as pkl
 import os
 import configargparse
 import open3d as o3d
 from scipy.spatial.transform import Rotation as R
+from sympy import re
 from o3dvis import o3dvis
 import matplotlib.pyplot as plt
-
+from o3dvis import read_pcd_from_server, client_server, list_dir_remote
 cmap = np.array([
     [245, 150, 100, 255],
     [245, 230, 100, 255],
@@ -33,31 +35,57 @@ cmap = np.array([
 ])
 cmap = cmap[:, [2, 1, 0]]  # convert bgra to rgba
 
-def load_point_cloud(file_name, pointcloud = None):
+def load_point_cloud(file_name, pointcloud = None, remote = False):
     if pointcloud is None:
         pointcloud = o3d.geometry.PointCloud()
-    if not os.path.exists(file_name):
-        pass
-    elif file_name.endswith('.txt'):
+        
+    if remote:
+        client = client_server()
+        # files = sorted(list_dir_remote(client, file_path))
+        _, stdout, _ = client.exec_command(f'[ -f {file_name} ] && echo OK') # 远程判断文件是否存在
+        if stdout.read().strip() != b'OK':
+            return pointcloud
+    elif not os.path.exists(file_name):
+        return pointcloud
+
+    if file_name.endswith('.txt'):
         pts = np.loadtxt(file_name)
-        pointcloud.points = o3d.utility.Vector3dVector(pts[:, :3])  
+        pointcloud.points = o3d.utility.Vector3dVector(pts[:, :3]) 
     elif file_name.endswith('.pcd') or file_name.endswith('.ply'):
-        pcd = o3d.io.read_point_cloud(file_name)
-        pointcloud.points = pcd.points
-        # print(len(pcd.poits))
-        pointcloud.paint_uniform_color([0.5, 0.5, 0.5])
+        if remote:
+            pcd = read_pcd_from_server(client, file_name)
+            pointcloud.points = o3d.utility.Vector3dVector(pcd[:, :3])
+            if pcd.shape[1] == 6:
+                pointcloud.colors = o3d.utility.Vector3dVector(pcd[:, 3:]) 
+        else:
+            pcd = o3d.io.read_point_cloud(file_name)
+            pointcloud.points = pcd.points
+            # print(len(pcd.poits))
+            pointcloud.paint_uniform_color([0.5, 0.5, 0.5])
     else:
         pass
     return pointcloud
 
-def load_boxes(dets, data_root_path = None):
+def load_boxes(dets, data_root_path = None, remote = False):
     vis = o3dvis()
     pointcloud = o3d.geometry.PointCloud()
     axis_pcd = o3d.geometry.TriangleMesh.create_coordinate_frame(size=2, origin=[
                                                                   0, 0, 0])
     vis.add_geometry(axis_pcd, reset_bounding_box = False)
 
-    poses = np.loadtxt(os.path.join(data_root_path, 'poses.txt')).reshape(-1, 3, 4)
+    if remote:
+        
+        client = client_server()
+        sftp_client = client.open_sftp()
+        with sftp_client.open(data_root_path + '/poses.txt', mode='r') as f:
+            poses = f.readlines()
+
+        ps = []
+        for p in poses:
+            ps.append(p.strip().split(' '))
+        poses = np.asarray(ps).astype(np.float32).reshape(-1, 3, 4)
+    else:
+        poses = np.loadtxt(os.path.join(data_root_path, 'poses.txt')).reshape(-1, 3, 4)
 
     boxes_list = []
     first_frame = True
@@ -87,9 +115,9 @@ def load_boxes(dets, data_root_path = None):
         obj_id = obj_id[name_m][score>0.5]
 
         # print(boxes_lidar.shape)
-        
-        pointcloud = load_point_cloud(os.path.join(
-            data_root_path, 'human_semantic', frame_id+'.pcd'), pointcloud)
+        join = '/' if remote else '\\'
+        pointcloud = load_point_cloud(join.join(
+            [data_root_path, 'human_semantic', frame_id+'.pcd']), pointcloud, remote=remote)
 
         # update point cloud
         if first_frame:
@@ -124,9 +152,12 @@ def load_boxes(dets, data_root_path = None):
 
             for i, box in enumerate(boxes_lidar):
 
-                transform = transformation[:3, :3] @ R.from_rotvec(
+                # transform = transformation[:3, :3] @ R.from_rotvec(
+                #     box[6] * np.array([0, 0, 1])).as_matrix()
+                # center = transformation[:3, :3] @ box[:3] + transformation[:3, 3]
+                transform = R.from_rotvec(
                     box[6] * np.array([0, 0, 1])).as_matrix()
-                center = transformation[:3, :3] @ box[:3] + transformation[:3, 3]
+                center = box[:3]
                 extend = box[3:6]
 
                 bbox = o3d.geometry.OrientedBoundingBox(center, transform, extend)
@@ -155,19 +186,27 @@ def load_boxes(dets, data_root_path = None):
             # vi.add_3D_boxes(boxes_lidar)
             # vi.show_3D()
 
+
 if __name__ == '__main__':
 
     parser = configargparse.ArgumentParser()
-    # parser.add_argument("--start_idx", '-S', type=int, default=0)
-    # parser.add_argument("--end_idx", '-E', type=int, default=-1)
-    parser.add_argument("--box_file_path", '-F', type=str,
-                        default="C:\\Users\\DAI\\Desktop\\temp\\0417-03_tracking.pkl")
-    args = parser.parse_args()
+    parser.add_argument("--remote", '-R', action='store_true')
+    parser.add_argument("--box_dir", '-B', type=str, default='/hdd/dyd/lidarhumanscene/0417-01')
+    args = parser.parse_args() 
 
-
-    with open(args.box_file_path, 'rb') as f:
-        dets = pkl.load(f)
 
     # load_boxes(dets, 'C:\\Users\\Yudi Dai\\Desktop\\segment\\velodyne')
     # load_boxes(dets, 'C:\\Users\\DAI\\Desktop\\temp\\velodyne')
-    load_boxes(dets, 'C:\\Users\\DAI\\Desktop\\temp')
+    if args.remote:
+        client = client_server()
+        sftp_client = client.open_sftp()
+
+        with sftp_client.open(
+            args.box_dir + f'/{os.path.basename(args.box_dir)}_tracking.pkl', mode='rb') as f:
+            dets = pkl.load(f)
+
+        load_boxes(dets, args.box_dir, remote=True)
+    else:
+        with open(args.box_dir, 'rb') as f:
+            dets = pkl.load(f)
+        load_boxes(dets, args.box_dir)

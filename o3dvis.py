@@ -416,7 +416,7 @@ class o3dvis():
             trajs = np.loadtxt(trajfile)[:,1:4]
             traj_cloud = o3d.geometry.PointCloud()
             # show as points
-            traj_cloud.points = Vector3dVector(trajs)
+            traj_cloud.points = o3d.utility.Vector3dVector(trajs)
             traj_cloud.paint_uniform_color(color)
             sphere_list.append(traj_cloud)
             # for t in range(1400, 2100, 1):
