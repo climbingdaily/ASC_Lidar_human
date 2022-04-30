@@ -195,6 +195,9 @@ class o3dvis():
         self.init_vis(window_name)
         print_help()
 
+    def change_pause_status(self):
+        pause_callback(self.vis)
+
     def add_scene_gemony(self, geometry):
         if not Keyword.REMOVE:
             self.add_geometry(geometry)

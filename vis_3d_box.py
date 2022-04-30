@@ -12,6 +12,7 @@ from sympy import re
 from o3dvis import o3dvis
 import matplotlib.pyplot as plt
 from o3dvis import read_pcd_from_server, client_server, list_dir_remote
+
 cmap = np.array([
     [245, 150, 100, 255],
     [245, 230, 100, 255],
@@ -35,7 +36,7 @@ cmap = np.array([
 ])
 cmap = cmap[:, [2, 1, 0]]  # convert bgra to rgba
 
-def load_point_cloud(file_name, pointcloud = None, remote = False):
+def load_point_cloud(file_name, pointcloud = None, remote = False, position = [0, 0, 0]):
     if pointcloud is None:
         pointcloud = o3d.geometry.PointCloud()
         
@@ -59,12 +60,70 @@ def load_point_cloud(file_name, pointcloud = None, remote = False):
                 pointcloud.colors = o3d.utility.Vector3dVector(pcd[:, 3:]) 
         else:
             pcd = o3d.io.read_point_cloud(file_name)
-            pointcloud.points = pcd.points
+            points = np.asarray(pcd.points)
+            colors = np.asarray(pcd.colors)
+            rule1 = abs(points[:, 0] - position[0]) < 40
+            rule2 = abs(points[:, 1] - position[1]) < 40
+            rule3 = abs(points[:, 2] - position[2]) < 5
+            rule = [a and b and c for a,b,c in zip(rule1, rule2, rule3)]
+            
+            pointcloud.points = o3d.utility.Vector3dVector(points[rule])
+            pointcloud.colors = o3d.utility.Vector3dVector(colors[rule])
+
             # print(len(pcd.poits))
-            pointcloud.paint_uniform_color([0.5, 0.5, 0.5])
+            # pointcloud.paint_uniform_color([0.5, 0.5, 0.5])
+        segment_ransac(pointcloud, return_seg=True)
+        
     else:
         pass
     return pointcloud
+
+def segment_ransac(pointcloud, return_seg = False):
+    # pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
+    pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+    colors = np.asarray(pointcloud.colors)
+    points = np.asarray(pointcloud.points)
+    # normals = np.asarray(pointcloud.normals)
+
+
+    rest_idx = set(np.arange(len(pointcloud.points)))
+    # plane_idx = set()
+    temp_idx = set()
+    
+    temp_cloud = o3d.geometry.PointCloud()
+
+    for i in range(4):
+        if i == 0:
+            plane_model, inliers = pointcloud.segment_plane(distance_threshold=0.10, ransac_n=3, num_iterations=1200)
+        elif len(temp_cloud.points) > 300:
+            plane_model, inliers = temp_cloud.segment_plane(distance_threshold=0.10, ransac_n=3, num_iterations=1200)
+        else:
+            break
+            
+        # plane_inds += rest_idx[inliers]
+        origin_inline = np.array(list(rest_idx))[inliers]
+        colors[origin_inline] = plt.get_cmap('tab10')(i)[:3]
+        rest_idx -= set(origin_inline)
+        # plane_idx.union(set(origin_inline))
+
+        if i == 0:
+            temp_cloud = pointcloud.select_by_index(inliers, invert=True)
+        else:
+            temp_cloud = temp_cloud.select_by_index(inliers, invert=True)
+
+        equation = plane_model[:3] ** 2
+        if equation[2]/(equation[0] + equation[1]) < 130.6460956439: 
+            # 如果平面与地面的夹角大于5°
+            colors[origin_inline] = [1, 0, 0]
+            temp_idx.union(set(origin_inline))
+
+    if return_seg:
+        non_ground_idx = np.array(list(rest_idx.union(temp_idx)))
+        pointcloud.points = o3d.utility.Vector3dVector(points[non_ground_idx])
+        pointcloud.colors = o3d.utility.Vector3dVector(colors[non_ground_idx])
+        # pointcloud.normals = o3d.utility.Vector3dVector(normals[non_ground_idx])
+    else:
+        pointcloud.colors = o3d.utility.Vector3dVector(colors)
 
 def load_boxes(dets, data_root_path = None, remote = False):
     vis = o3dvis()
@@ -92,8 +151,8 @@ def load_boxes(dets, data_root_path = None, remote = False):
     mesh_list = []
 
     for idx, frame_info in enumerate(dets):
-        if idx <400:
-            continue
+        # if idx <400:
+        #     continue
         # transformation = poses[idx]
         
         if data_root_path is None:
@@ -116,15 +175,9 @@ def load_boxes(dets, data_root_path = None, remote = False):
 
         # print(boxes_lidar.shape)
         join = '/' if remote else '\\'
+        
         pointcloud = load_point_cloud(join.join(
-            [data_root_path, 'human_semantic', frame_id+'.pcd']), pointcloud, remote=remote)
-
-        # update point cloud
-        if first_frame:
-            vis.add_geometry(pointcloud)
-            first_frame = False
-        else:
-            vis.vis.update_geometry(pointcloud)
+            [data_root_path, 'human_semantic', frame_id+'.pcd']), pointcloud, remote=remote, position=transformation[:3, 3])
 
         # update axis
         vis.remove_geometry(axis_pcd, reset_bounding_box=False)
@@ -146,10 +199,9 @@ def load_boxes(dets, data_root_path = None, remote = False):
             data_root_path, 'segment_by_tracking_01'), f'{idx:04d}')
         if os.path.exists(mesh_dir):
             mesh_list += vis.add_mesh_together(
-                mesh_dir, os.listdir(mesh_dir), plt.get_cmap("tab20")(idx)[:3])
+                mesh_dir, os.listdir(mesh_dir), plt.get_cmap("tab20")(idx % 20)[:3])
 
         if len(pointcloud.points) > 0 and len(boxes_lidar) >0:
-
             for i, box in enumerate(boxes_lidar):
 
                 # transform = transformation[:3, :3] @ R.from_rotvec(
@@ -173,6 +225,14 @@ def load_boxes(dets, data_root_path = None, remote = False):
                 boxes_list.append(bbox)
                 vis.add_geometry(bbox, reset_bounding_box = False, waitKey=0)
             
+            # update point cloud
+            if first_frame:
+                vis.add_geometry(pointcloud)
+                first_frame = False
+                vis.change_pause_status()
+            else:
+                vis.vis.update_geometry(pointcloud)
+
             vis.waitKey(10, helps=False)
         else:
             print(f'Skip frame {idx}, {frame_id}')       
@@ -192,7 +252,7 @@ if __name__ == '__main__':
 
     parser = configargparse.ArgumentParser()
     parser.add_argument("--remote", '-R', action='store_true')
-    parser.add_argument("--box_dir", '-B', type=str, default='/hdd/dyd/lidarhumanscene/0417-01')
+    parser.add_argument("--box_dir", '-B', type=str, default='C:\\Users\\Yudi Dai\\Desktop\\segment')
     args = parser.parse_args() 
 
 
