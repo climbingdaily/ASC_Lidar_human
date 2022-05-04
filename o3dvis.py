@@ -59,8 +59,28 @@ class Keyword():
     SET_VIEW = False    # set the view based on the info   
     VIS_STREAM = True   # only visualize the the latest mesh stream
     ROTATE = False      # rotate the view automatically
+    PRESS_YES = False   #
+    PRESS_NO = False   #
 
-
+lidar_cap_view = {
+	"class_name" : "ViewTrajectory",
+	"interval" : 29,
+	"is_loop" : 'false',
+	"trajectory" : 
+	[
+		{
+			"boundingbox_max" : [ 74.593666076660156, 43.178085327148438, 11.551046371459961 ],
+			"boundingbox_min" : [ -64.269279479980469, -34.139186859130859, -4.4510049819946289 ],
+			"field_of_view" : 59.999999999999993,
+			"front" : [ 0.78640128083841598, -0.28397063347164114, 0.54857424731882343 ],
+			"lookat" : [ -0.84304582914768755, -1.7827584067306674, 0.088647440399997293 ],
+			"up" : [ -0.50817483197168944, 0.20747905554223359, 0.83588921614161771 ],
+			"zoom" : 0.080000000000000002
+		}
+	],
+	"version_major" : 1,
+	"version_minor" : 0
+}
 
 
 def o3d_callback_rotate():
@@ -74,7 +94,7 @@ camera = {
     'cy': 0.5,
     'cz': 3.}
 
-def init_camera(camera_pose):
+def init_camera(vis, camera_pose):
     ctr = vis.get_view_control()
     init_param = ctr.convert_to_pinhole_camera_parameters()
     # init_param.intrinsic.set_intrinsics(init_param.intrinsic.width, init_param.intrinsic.height, fx, fy, cx, cy)
@@ -105,9 +125,9 @@ def get_camera():
     return np.array(init_param.extrinsic)
 
 def o3dcallback(camera_pose=None):
-    if ROTATE:
-        camera['phi'] += np.pi/10
-        camera_pose = set_camera(get_camera())
+    # if ROTATE:
+    #     camera['phi'] += np.pi/10
+    #     camera_pose = set_camera(get_camera())
         # camera_pose = np.array([[-0.927565, 0.36788, 0.065483, -1.18345],
         #                         [0.0171979, 0.217091, -0.976, -0.0448631],
         #                         [-0.373267, -0.904177, -0.207693, 8.36933],
@@ -118,6 +138,16 @@ def o3dcallback(camera_pose=None):
 def set_view(vis):
     Keyword.SET_VIEW = not Keyword.SET_VIEW
     print('SET_VIEW', Keyword.SET_VIEW)
+    return False
+
+def press_yes(vis):
+    Keyword.PRESS_YES = not Keyword.PRESS_YES
+    print('PRESS_YES', Keyword.PRESS_YES)
+    return False
+    
+def press_no(vis):
+    Keyword.PRESS_NO = not Keyword.PRESS_NO
+    print('PRESS_NO', Keyword.PRESS_NO)
     return False
 
 def save_imgs(vis):
@@ -203,7 +233,6 @@ class o3dvis():
             self.add_geometry(geometry)
 
     def init_vis(self, window_name):
-        
         self.vis = o3d.visualization.VisualizerWithKeyCallback()
         self.vis.register_key_callback(ord(" "), pause_callback)
         self.vis.register_key_callback(ord("Q"), destroy_callback)
@@ -213,7 +242,20 @@ class o3dvis():
         self.vis.register_key_callback(ord("F"), stream_callback)
         self.vis.register_key_callback(ord("."), save_imgs)
         self.vis.register_key_callback(ord(","), set_view)
+        self.vis.register_key_callback(ord("N"), press_no)
+        self.vis.register_key_callback(ord("Y"), press_yes)
         self.vis.create_window(window_name=window_name, width=1280, height=720)
+
+    def init_camera(self):
+        camera_pose = np.array([[0.927565, -0.36788, 0.065483, -1.18345],
+                                [-0.0171979, -0.217091, -0.976, -0.0448631],
+                                [0.373267, 0.904177, -0.207693, 4.36933],
+                                [0, 0, 0, 1]])
+        ctr = self.vis.get_view_control()
+        init_param = ctr.convert_to_pinhole_camera_parameters()
+        # init_param.intrinsic.set_intrinsics(init_param.intrinsic.width, init_param.intrinsic.height, fx, fy, cx, cy)
+        init_param.extrinsic = np.array(camera_pose)
+        ctr.convert_from_pinhole_camera_parameters(init_param)
 
     def waitKey(self, key, helps = True):
         print_help(helps)
@@ -436,7 +478,7 @@ class o3dvis():
         Keyword.VIS_TRAJ = False
         return sphere_list
 
-    def set_view(self, view):
+    def set_view(self, view=lidar_cap_view):
         ctr = self.vis.get_view_control()
         if view is not None:
             # self.vis.reset_view_point(True)
@@ -446,6 +488,16 @@ class o3dvis():
             ctr.set_front(np.array(view['trajectory'][0]['front']))
             return True
         return False
+
+    def return_press_state(self):
+        while True:
+            if Keyword.PRESS_YES:
+                Keyword.PRESS_YES = False
+                return True
+            if Keyword.PRESS_NO:
+                Keyword.PRESS_NO = False
+                return False
+            self.waitKey(10, helps=False)
 
     def save_imgs(self, out_dir, filename):
         """[summary]

@@ -23,8 +23,6 @@ Vector3iVector = o3d.utility.Vector3iVector
 Vector2iVector = o3d.utility.Vector2iVector
 TriangleMesh = o3d.geometry.TriangleMesh
 
-
-
 def change_background_to_black(vis):
     opt = vis.get_render_option()
     opt.background_color = np.asarray([0, 0, 0])
