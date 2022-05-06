@@ -19,8 +19,9 @@ def list_dir_remote(client, folder):
     res_list = stdout.readlines()
     return [i.strip() for i in res_list]
 
-def read_pcd_from_server(client, filepath):
-    sftp_client = client.open_sftp()
+def read_pcd_from_server(client, filepath, sftp_client = None):
+    if sftp_client is None:
+        sftp_client = client.open_sftp()
     remote_file = sftp_client.open(filepath, mode='rb')  # 文件路径
 
     try:
