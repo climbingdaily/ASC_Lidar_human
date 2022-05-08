@@ -10,7 +10,9 @@ def hidden_point_removal(pcd, camera = [0, 0, 0]):
     print("Define parameters used for hidden_point_removal")
     # camera = [view_point[0], view_point[0], diameter]
     # camera = view_point
-    radius = diameter * 100
+    dist = np.linalg.norm(pcd.get_center())
+    # radius = diameter * 100
+    radius = dist * 1000
 
     print("Get all points that are visible from given view point")
     _, pt_map = pcd.hidden_point_removal(camera, radius)
@@ -49,22 +51,30 @@ def select_points_on_the_scan_line(points, view_point=None, scans=64, line_num=1
     for idx in range(0, points.shape[0]):
         rule1 =  pitch[idx] >= fov_down
         rule2 =  pitch[idx] <= fov_up
-        rule3 = abs(pitch[idx] % ratio - 0.0) < 0.005
-        rule4 = abs(yaw[idx] % hoz_ratio - 0.0) < 0.0005
-        if rule1 and rule2 and rule3 and rule4:
-            scanid = int((pitch[idx] + 1e-4) // ratio + scans // 2)
-            pointid = int((yaw[idx] + 1e-4) // hoz_ratio)
+        rule3 = abs(pitch[idx] % ratio) < ratio * 0.4
+        rule4 = abs(yaw[idx] % hoz_ratio) < hoz_ratio * 0.4
+        if rule1 and rule2:
+            scanid = np.rint((pitch[idx] + 1e-4) / ratio) + scans // 2
+            pointid = np.rint((yaw[idx] + 1e-4) // hoz_ratio)
 
             if pointid > 0 and scan_x[idx] < 0:
                 pointid += 1024 // 2
             elif pointid < 0 and scan_y[idx] < 0:
                 pointid += 1024 // 2
             
+            z = np.sin(scanid * ratio + fov_down)
+            xy = abs(np.cos(scanid * ratio + fov_down))
+            y = xy * np.sin(pointid * hoz_ratio)
+            x = xy * np.cos(pointid * hoz_ratio)
+
+            # 找到根指定激光射线夹角最小的点
+            cos_delta_theta = np.dot(points[idx], np.array([x, y, z])) / depth[idx]
+            delta_theta = np.arccos(abs(cos_delta_theta))
             if pointid in saved_box[scanid]:
-                if depth[idx] < saved_box[scanid][pointid]['depth']:
-                    saved_box[scanid][pointid].update({'points': points[idx], 'depth': depth[idx]})
+                if delta_theta < saved_box[scanid][pointid]['delta_theta']:
+                    saved_box[scanid][pointid].update({'points': points[idx], 'delta_theta': delta_theta})
             else:
-                saved_box[scanid][pointid] = {'points': points[idx], 'depth': depth[idx]}
+                saved_box[scanid][pointid] = {'points': points[idx], 'delta_theta': delta_theta}
 
     save_points  =[]
     for key, value in saved_box.items():
@@ -85,6 +95,14 @@ def select_points_on_the_scan_line(points, view_point=None, scans=64, line_num=1
 
     return pc
 
+def shorter_distance(points, dist=5):
+    # 将lidarcap所有的mesh先摆平，再向原点拉近10M （5组）
+    # 将lidarcap所有的mesh先摆平，再向原点拉近5M  (5组)
+    pass
+
+def multi_process():
+    pass
+
 def simulatorLiDAR(root, out_root):
     
     out_root = root
@@ -104,9 +122,9 @@ def simulatorLiDAR(root, out_root):
         point_clouds = o3d.open3d.io.read_triangle_mesh(filelist[index])
         if len(point_clouds.triangles) > 0:
             point_clouds.compute_vertex_normals()
-            pcd = point_clouds.sample_points_poisson_disk(100000)
+            point_clouds = point_clouds.sample_points_poisson_disk(100000)
         else:
-            pcd = o3d.io.read_point_cloud(filelist[index])
+            point_clouds = o3d.io.read_point_cloud(filelist[index])
         #     pcd = point_clouds
 
         # point_clouds
@@ -115,8 +133,9 @@ def simulatorLiDAR(root, out_root):
         view_point[1] += -6.0
         view_point[2] += 0
 
-        pc_ds = select_points_on_the_scan_line(np.asarray(pcd.points))
-        # pc_ds = select_points_on_the_scan_line(np.asarray(pcd.points), view_point)
+        point_clouds = hidden_point_removal(point_clouds)
+        point_clouds = select_points_on_the_scan_line(np.asarray(point_clouds.points))
+        # point_clouds = select_points_on_the_scan_line(np.asarray(pcd.points), view_point)
         
         filename, _ = os.path.splitext(os.path.basename(filelist[index]))
         
@@ -124,8 +143,9 @@ def simulatorLiDAR(root, out_root):
         save_path = os.path.join(ds_folder, filename + '.pcd')
 
         # o3d.io.write_point_cloud(save_path, pcd)
-        o3d.io.write_point_cloud(save_path, pc_ds)
+        o3d.io.write_point_cloud(save_path, point_clouds)
 
 if __name__ == '__main__':
 
     simulatorLiDAR('C:\\Users\\DAI\\Desktop\\temp\\segment_by_tracking_03_straight\\0013', '')
+    # simulatorLiDAR('C:\\Users\\DAI\\Desktop\\temp\\4', '')
