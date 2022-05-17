@@ -3,6 +3,7 @@
 # from distutils.command.build_scripts import first_line_re
 # from tkinter import CENTER
 # from typing_extensions import Self
+from tkinter.messagebox import NO
 import numpy as np
 import pickle as pkl
 import os
@@ -175,7 +176,7 @@ def segment_ransac(pointcloud, return_seg = False):
     else:
         pointcloud.colors = o3d.utility.Vector3dVector(colors)
 
-def load_boxes(dets, load_data, data_root_path = None):
+def load_boxes(dets, load_data, data_root_path = None, mesh_dir=None):
     vis = o3dvis()
     pointcloud = o3d.geometry.PointCloud()
     axis_pcd = o3d.geometry.TriangleMesh.create_coordinate_frame(size=2, origin=[
@@ -188,9 +189,16 @@ def load_boxes(dets, load_data, data_root_path = None):
     first_frame = True
     mesh_list = []
 
+    join = '/' if load_data.remote else '\\'
+
+    if mesh_dir is None:
+        mesh_dir = join.join([data_root_path, 'segment_by_tracking_03_rot'])
+    else:
+        mesh_dir = join.join([data_root_path, mesh_dir])
+
     for idx, frame_info in enumerate(dets):
-        # if idx <400:
-        #     continue
+        if idx < 800:
+            continue
         # transformation = poses[idx]
         
         if data_root_path is None:
@@ -212,7 +220,6 @@ def load_boxes(dets, load_data, data_root_path = None):
         obj_id = obj_id[name_m][score>0.5]
 
         # print(boxes_lidar.shape)
-        join = '/' if load_data.remote else '\\'
         
         pointcloud = load_data.load_point_cloud(join.join(
             [data_root_path, 'human_semantic', frame_id+'.pcd']), pointcloud, position=transformation[:3, 3])
@@ -233,10 +240,10 @@ def load_boxes(dets, load_data, data_root_path = None):
         mesh_list.clear()
 
         # ! Temp code, for visualization test
-        mesh_dir = join.join([join.join([data_root_path, 'segment_by_tracking_03_rot']), f'{idx:04d}'])
-        if os.path.exists(mesh_dir):
+        frame_mesh_dir = join.join([mesh_dir, f'{idx:04d}']) 
+        if os.path.exists(frame_mesh_dir):
             mesh_list += vis.add_mesh_together(
-                mesh_dir, os.listdir(mesh_dir), plt.get_cmap("tab20")(idx % 20)[:3])
+                frame_mesh_dir, os.listdir(frame_mesh_dir), plt.get_cmap("tab20")(idx % 20)[:3])
 
         if len(pointcloud.points) > 0 and len(boxes_lidar) >0:
             for i, box in enumerate(boxes_lidar):
@@ -251,13 +258,6 @@ def load_boxes(dets, load_data, data_root_path = None):
 
                 bbox = o3d.geometry.OrientedBoundingBox(center, transform, extend)
 
-                # if score[score>0.6][i] >= 0.9:
-                #     bbox.color = np.array([0, 1, 0])
-                # elif score[score>0.6][i] >= 0.8:
-                #     bbox.color = np.array([0, 0, 1])
-                # elif score[score>0.6][i] >= 0.6:
-                #     bbox.color = np.array([1, 0, 0])
-
                 bbox.color = cmap[int(obj_id[i]) % len(cmap)] / 255
                 boxes_list.append(bbox)
                 vis.add_geometry(bbox, reset_bounding_box = False, waitKey=0)
@@ -270,34 +270,25 @@ def load_boxes(dets, load_data, data_root_path = None):
             else:
                 vis.vis.update_geometry(pointcloud)
 
-            vis.waitKey(10, helps=False)
+            vis.waitKey(1, helps=False)
         else:
             print(f'Skip frame {idx}, {frame_id}')       
 
         vis.save_imgs(os.path.join(data_root_path, 'imgs'),
                         '{:04d}.jpg'.format(idx))
-        
-        # paths = os.path.join(data_root_path, str(seq_id), frame_id+'.npy')
-        # if os.path.exists(paths):
-            # points = np.load(paths)
-            # vi.add_points(points[:,0:3])
-            # vi.add_3D_boxes(boxes_lidar)
-            # vi.show_3D()
-
 
 if __name__ == '__main__':
 
     parser = configargparse.ArgumentParser()
     parser.add_argument("--remote", '-R', action='store_true')
-    parser.add_argument("--box_dir", '-B', type=str, default='C:\\Users\\DAI\\Desktop\\temp')
+    parser.add_argument("--tracking_file", '-B', type=str, default='C:\\Users\\DAI\\Desktop\\temp\\0417-03_tracking.pkl')
+    parser.add_argument("--mesh_dir", '-M', type=str, default='New Folder')
     args = parser.parse_args() 
 
     # load_boxes(dets, 'C:\\Users\\Yudi Dai\\Desktop\\segment\\velodyne')
     # load_boxes(dets, 'C:\\Users\\DAI\\Desktop\\temp\\velodyne')
     load_data = load_data_remote(args.remote)
-    if args.remote:
-        folder = f'{args.box_dir}/{os.path.basename(args.box_dir)}_tracking.pkl'
-    else:
-        folder = os.path.join(args.box_dir, '0417-03_tracking.pkl')
-    dets = load_data.load_pkl(folder)
-    load_boxes(dets, load_data, args.box_dir)
+
+    dets = load_data.load_pkl(args.tracking_file)
+
+    load_boxes(dets, load_data, os.path.dirname(args.tracking_file), mesh_dir = args.mesh_dir)
