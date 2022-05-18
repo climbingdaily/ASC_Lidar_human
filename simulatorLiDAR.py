@@ -68,7 +68,8 @@ def select_points_on_the_scan_line(points, view_point=None, scans=64, line_num=1
         if rule1 and rule2:
             scanid = np.rint((pitch[idx] + 1e-4) / ratio) + scans // 2
             pointid = np.rint((yaw[idx] + 1e-4) // hoz_ratio)
-
+            if scanid < 0 or scanid >= scans:
+                continue
             if pointid > 0 and scan_x[idx] < 0:
                 pointid += 1024 // 2
             elif pointid < 0 and scan_y[idx] < 0:

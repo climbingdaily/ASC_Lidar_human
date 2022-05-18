@@ -222,8 +222,8 @@ def print_help(is_print=True):
 
 
 class o3dvis():
-    def __init__(self, window_name = 'DAI_VIS'):
-        self.init_vis(window_name)
+    def __init__(self, window_name = 'DAI_VIS', width=1280, height=720):
+        self.init_vis(window_name, width, height)
         print_help()
 
     def change_pause_status(self):
@@ -233,7 +233,7 @@ class o3dvis():
         if not Keyword.REMOVE:
             self.add_geometry(geometry)
 
-    def init_vis(self, window_name):
+    def init_vis(self, window_name, width, height):
         self.vis = o3d.visualization.VisualizerWithKeyCallback()
         self.vis.register_key_callback(ord(" "), pause_callback)
         self.vis.register_key_callback(ord("Q"), destroy_callback)
@@ -245,7 +245,7 @@ class o3dvis():
         self.vis.register_key_callback(ord(","), set_view)
         self.vis.register_key_callback(ord("N"), press_no)
         self.vis.register_key_callback(ord("Y"), press_yes)
-        self.vis.create_window(window_name=window_name, width=1280, height=720)
+        self.vis.create_window(window_name=window_name, width=width, height=height)
 
     def init_camera(self):
         camera_pose = np.array([[0.927565, -0.36788, 0.065483, -1.18345],
@@ -277,6 +277,12 @@ class o3dvis():
 
     def remove_geometry(self, geometry, reset_bounding_box = True):
         self.vis.remove_geometry(geometry, reset_bounding_box)
+
+    def remove_geometries(self, geometries, reset_bounding_box = True):
+        for geometry in geometries:
+            self.remove_geometry(geometry, reset_bounding_box)
+        geometries.clear()
+        
 
     def set_view_zoom(self, info, count, steps):
         """根据参数设置vis的视场角
@@ -337,7 +343,7 @@ class o3dvis():
         #     # elif e == 'field_of_view':
             #     ctr.change_field_of_view(z1 + count * (z2-z1) / (steps - 1))
     
-    def add_mesh_together(self, plydir, mesh_list, color):
+    def add_mesh_together(self, plydir, mesh_list, colors = None, geometies = None, transformation=None):
         """_summary_
 
         Args:
@@ -345,17 +351,36 @@ class o3dvis():
             mesh_list (_type_): _description_
             color (_type_): _description_
         """
-        geometies = []
-        for mesh_file in mesh_list:
+        if geometies is None:
+            geometies = []
+        if transformation is None:
+            transformation = []
+        
+        for idx, mesh_file in enumerate(mesh_list):
             plyfile = os.path.join(plydir, mesh_file)
             # print(plyfile)
             mesh = o3d.io.read_triangle_mesh(plyfile)
             mesh.compute_vertex_normals()
-            # mesh.paint_uniform_color(colors[color])
-            mesh.paint_uniform_color(plt.get_cmap("tab20")(int(mesh_file.split('.')[0]))[:3])
+            if colors is not None:
+                mesh.paint_uniform_color(colors[idx])
+            else:
+                mesh.paint_uniform_color(plt.get_cmap("tab20")(int(mesh_file.split('.')[0]))[:3])
+            
+            if not mesh.has_triangle_uvs():
+                uv = np.array([[0.0, 0.0]] * (3 * len(mesh.triangles)))
+                mesh.triangle_uvs = o3d.utility.Vector2dVector(uv)
+                
             # mesh.vertices = Vector3dVector(np.array(mesh.vertices) - trajs[num[i],1:4] + mocap_trajs[num[i],1:4])
-            geometies.append(mesh)
-            self.add_geometry(mesh, reset_bounding_box = False, waitKey=0)
+            if len(transformation) > idx:
+                mesh.transform(transformation[idx])
+            if len(geometies) > idx:
+                geometies[idx].vertices = mesh.vertices
+                geometies[idx].vertex_colors = mesh.vertex_colors
+                geometies[idx].vertex_normals = mesh.vertex_normals
+                self.vis.update_geometry(geometies[idx])
+            else:
+                geometies.append(mesh)
+                self.add_geometry(mesh, reset_bounding_box = False, waitKey=0)
         return geometies
 
     def add_mesh_by_order(self, plydir, mesh_list, color, strs='render', order = True, start=None, end=None, info=None):

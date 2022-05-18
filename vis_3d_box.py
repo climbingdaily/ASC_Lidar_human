@@ -3,7 +3,7 @@
 # from distutils.command.build_scripts import first_line_re
 # from tkinter import CENTER
 # from typing_extensions import Self
-from tkinter.messagebox import NO
+# from tkinter.messagebox import NO
 import numpy as np
 import pickle as pkl
 import os
@@ -13,7 +13,14 @@ from scipy.spatial.transform import Rotation as R
 # from sympy import re
 from o3dvis import o3dvis
 import matplotlib.pyplot as plt
+import copy
 from o3dvis import read_pcd_from_server, client_server, list_dir_remote
+from simulatorLiDAR import hidden_point_removal, select_points_on_the_scan_line
+
+
+mat_box = o3d.visualization.rendering.MaterialRecord()
+# mat_box.shader = 'defaultUnlit'
+mat_box.shader = 'defaultLitTransparency'
 
 cmap = np.array([
     [245, 150, 100, 255],
@@ -37,6 +44,38 @@ cmap = np.array([
     [0, 0, 255, 255],
 ])
 cmap = cmap[:, [2, 1, 0]]  # convert bgra to rgba
+
+def load_all_files_id(folder):
+    results = os.listdir(folder)
+    files_by_framid = {}
+    files_by_humanid = {}
+    for f in results:
+        if not f.endswith('.pcd'):
+            continue
+        basename = f.split('.')[0]
+        humanid = basename.split('_')[0]
+        frameid = basename.split('_')[1]
+        if frameid in files_by_framid:
+            files_by_framid[frameid].append(humanid)
+        else:
+            files_by_framid[frameid] = [humanid]
+
+        if humanid in files_by_humanid:
+            files_by_humanid[humanid].append(frameid)
+        else:
+            files_by_humanid[humanid] = [frameid]
+
+    files_by_humanid = dict(
+        sorted(files_by_humanid.items(), key=lambda x: int(x[0])))
+    files_by_framid = dict(
+        sorted(files_by_framid.items(), key=lambda x: int(x[0])))
+
+    for key, frame in files_by_humanid.items():
+        files_by_humanid[key] = sorted(frame, key=lambda x: int(x))
+    for key, frame in files_by_framid.items():
+        files_by_framid[key] = sorted(frame, key=lambda x: int(x))
+
+    return files_by_framid, files_by_humanid
 
 class load_data_remote(object):
     def __init__(self, remote):
@@ -123,11 +162,12 @@ class load_data_remote(object):
             ps = []
             for p in poses:
                 ps.append(p.strip().split(' '))
-            poses = np.asarray(ps).astype(np.float32).reshape(-1, 3, 4)
+            poses34 = np.asarray(ps).astype(np.float32).reshape(-1, 3, 4)
         else:
-            poses = np.loadtxt(os.path.join(data_root_path, 'poses.txt')).reshape(-1, 3, 4)
+            poses34 = np.loadtxt(os.path.join(data_root_path, 'poses.txt')).reshape(-1, 3, 4)
         
-        return poses
+        poses44 = np.array([np.concatenate((p, np.array([[0,0,0,1]]))) for p in poses34])
+        return poses44
 
 def segment_ransac(pointcloud, return_seg = False):
     # pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
@@ -176,53 +216,202 @@ def segment_ransac(pointcloud, return_seg = False):
     else:
         pointcloud.colors = o3d.utility.Vector3dVector(colors)
 
-def load_boxes(dets, load_data, data_root_path = None, mesh_dir=None):
+def read_frame_from_dets(frame_info):
+    name = frame_info['name']
+    score = frame_info['score']
+    boxes_lidar = frame_info['boxes_lidar']
+    frame_name = frame_info['frame_id']
+    obj_id = frame_info['ids']
+    # seq_id = frame_info['seq_id']
+
+    name_m = name!='Car' #
+    name = name[name_m]
+    score = score[name_m]
+    boxes_lidar = boxes_lidar[name_m][score>0.5]
+    obj_id = obj_id[name_m][score>0.5]
+
+    return obj_id, frame_name, boxes_lidar
+
+def add_boxes_to_vis(boxes_lidar, vis, human_id, boxes_list):
+
+    for i, box in enumerate(boxes_lidar):
+        transform = R.from_rotvec(
+            box[6] * np.array([0, 0, 1])).as_matrix()
+        center = box[:3]
+        extend = box[3:6]
+
+        bbox = o3d.geometry.OrientedBoundingBox(center, transform, extend)
+
+        bbox.color = cmap[int(human_id[i]) % len(cmap)] / 255
+        boxes_list.append(bbox)
+        vis.add_geometry(bbox, reset_bounding_box = False, waitKey=0)
+
+def icp_mesh_and_point_cloud(mesh, point_cloud, reg_mesh = None, threshold = 0.2, vis = None):
+    """_summary_
+
+    Args:
+        mesh (_type_): _description_
+        point_cloud (_type_): _description_
+    """
+    smpl = o3d.geometry.PointCloud()
+    smpl.points = o3d.utility.Vector3dVector(np.asarray(mesh.vertices))
+    # smpl = mesh.sample_points_poisson_disk(6890)
+    geometries = []
+    smpl = hidden_point_removal(smpl)
+    init_transform = np.asarray([[1, 0, 0, 0], 
+                                 [0, 1, 0, 0], 
+                                 [0, 0, 1, 0], 
+                                 [0, 0, 0, 1]])
+    smpl = select_points_on_the_scan_line(np.asarray(smpl.points))
+    # smpl.translate(np.asarray([0, -0.8, 0.]))
+    if vis is not None:
+        vis.add_geometry(smpl, reset_bounding_box = False)
+    else:
+        geometries.append(smpl)
+
+    reg_p2l = o3d.pipelines.registration.registration_icp(
+        smpl, point_cloud, threshold, init_transform,
+        o3d.pipelines.registration.TransformationEstimationPointToPoint())
+    # print(reg_p2l)
+    # print("Transformation is:")
+    # print(reg_p2l.transformation)
+    # draw_registration_result(source, target, reg_p2l.transformation)
+    if reg_mesh is None:
+        reg_mesh = copy.deepcopy(mesh)
+    else:
+        reg_mesh.vertices = mesh.vertices
+        reg_mesh.vertex_colors = mesh.vertex_colors
+        reg_mesh.vertex_normals = mesh.vertex_normals
+
+    reg_mesh.paint_uniform_color([1, 0.706, 0])
+    reg_mesh.transform(reg_p2l.transformation)
+
+    geometries.append(reg_mesh)
+
+    return geometries
+
+def make_cloud_in_vis_center(point_cloud):
+    center = point_cloud.get_center()
+    yaw = np.arctan2(center[1], center[0])
+
+    # rot the point on the X-axis
+    rt = R.from_rotvec(np.array([0, 0, -yaw])).as_matrix()
+
+    # put the point in 5 meters distance
+    trans_x = 5 - (rt @ center)[0]
+
+    rt = np.concatenate((rt.T, np.array([[trans_x, 0, 0]]))).T
+    rt = np.concatenate((rt, np.array([[0, 0, 0, 1]])))
+
+    point_cloud.transform(rt)
+    # point_cloud.traslate(rt)
+
+    return rt
+
+def display_by_human(load_data, file_path, skip = 0):
+    """_summary_
+
+    Args:
+        load_data (_type_): _description_
+        files_by_humanid (_type_): _description_
+        file_path (_type_): _description_
+        poses (_type_): _description_
+        join (str, optional): _description_. Defaults to '\'.
+        skip (int, optional): _description_. Defaults to 0.
+    """
+    join = '/' if load_data.remote else '\\'
+
+    view = {
+            "trajectory":
+            [
+                {
+                    "boundingbox_max" : [ 5.1677, 1.3001, 0.163910],
+                    "boundingbox_min" : [ 4.8066, 0.7946, -0.64518],
+                    "field_of_view" : 60.0,
+                    "front" : [ -0.9701, 0.1998, 0.1373 ],
+                    "lookat" : [ 4.9432, 0.5004, -0.7150],
+                    "up" : [ 0.15808, 0.09163, 0.9831 ],
+                    "zoom" : 2.0
+                }
+            ]
+    }
+    vis = o3dvis(width=600, height=600)
+    pointcloud = o3d.geometry.PointCloud()
+    geometries = []
+    reg_mesh = []
+    _, files_by_humanid = load_all_files_id(file_path)
+
+    first_frame = False
+    for humanid in files_by_humanid:
+        frame_ids = files_by_humanid[humanid]
+        vis.remove_geometries(geometries, reset_bounding_box = False)
+        # vis.remove_geometries(reg_mesh, reset_bounding_box = False)
+        for frame_id in frame_ids:
+
+            cloud_file = join.join([file_path, f'{humanid}_{frame_id}.pcd'])
+            pointcloud = load_data.load_point_cloud(cloud_file, pointcloud)
+            
+            transformation = make_cloud_in_vis_center(pointcloud)
+
+            # smpl = join.join(['predict_smpl', f'{frame_id}_{humanid}.ply'])
+            smpl = join.join([frame_id, f'{humanid}.ply'])
+            color = plt.get_cmap("tab20")(int(humanid) % 20)[:3]
+            vis.add_mesh_together(file_path, [smpl], [color], geometries, [transformation])
+
+            if not first_frame:
+                vis.change_pause_status()
+                # reg_mesh += icp_mesh_and_point_cloud(geometries[0], pointcloud)
+                vis.add_geometry(pointcloud.translate(np.array([0, 1, 0])), reset_bounding_box = True)
+                vis.set_view(view)
+                # vis.add_geometry(reg_mesh[1], reset_bounding_box = False)
+                first_frame = True
+            else:
+                # reg_mesh = icp_mesh_and_point_cloud(geometries[0], pointcloud, reg_mesh[1])
+                # vis.vis.update_geometry(reg_mesh[1])
+                vis.vis.update_geometry(pointcloud.translate(np.array([0, 1, 0])))
+                
+
+            # geometries += registered
+
+            vis.waitKey(1, helps=False)
+            
+            # vis.save_imgs(os.path.join(file_path, 'imgs'), f'{frame_idx:04d}.jpg')
+
+def display_by_box_frame(load_data, dets, poses, data_root_path = None, mesh_dir=None, skip = 0):
+    """ 根据检测的bbox, 判断每帧的是否有对应的mesh, 有则显示
+    Args:
+        dets (dict): _description_
+        poses (floats): (n, 4, 4) array
+        join (str, optional): _description_. Defaults to '\\'.
+        data_root_path (str, optional): _description_. Defaults to None.
+        files_by_frameid (str, optional): _description_. Defaults to None.
+        skip (int, optional): skip [skip] to vis. Defaults to 0.
+    """
+    join = '/' if load_data.remote else '\\'
+    files_by_frameid, _ = load_all_files_id(mesh_dir)
+
+    # 从dets中读取boundingbox
+    boxes_list = []
+    first_frame = True
+    mesh_list = []
+
     vis = o3dvis()
     pointcloud = o3d.geometry.PointCloud()
     axis_pcd = o3d.geometry.TriangleMesh.create_coordinate_frame(size=2, origin=[
                                                                   0, 0, 0])
     vis.add_geometry(axis_pcd, reset_bounding_box = False)
 
-    poses = load_data.read_poses(data_root_path)
-
-    boxes_list = []
-    first_frame = True
-    mesh_list = []
-
-    join = '/' if load_data.remote else '\\'
-
-    if mesh_dir is None:
-        mesh_dir = join.join([data_root_path, 'segment_by_tracking_03_rot'])
-    else:
-        mesh_dir = join.join([data_root_path, mesh_dir])
-
-    for idx, frame_info in enumerate(dets):
-        if idx < 800:
+    for frame_idx, frame_info in enumerate(dets):
+        if frame_idx < 800 or data_root_path is None:
             continue
-        # transformation = poses[idx]
-        
-        if data_root_path is None:
-            continue
-
-        transformation = np.concatenate((poses[idx], np.array([[0,0,0,1]])))
+        transformation = poses[frame_idx]
         # transformation = np.eye(4)
-        name = frame_info['name']
-        score = frame_info['score']
-        boxes_lidar = frame_info['boxes_lidar']
-        frame_id = frame_info['frame_id']
-        obj_id = frame_info['ids']
-        # seq_id = frame_info['seq_id']
 
-        name_m = name!='Car' #
-        name = name[name_m]
-        score = score[name_m]
-        boxes_lidar = boxes_lidar[name_m][score>0.5]
-        obj_id = obj_id[name_m][score>0.5]
-
+        human_ids, frame_name, boxes_lidar = read_frame_from_dets(frame_info)
         # print(boxes_lidar.shape)
         
-        pointcloud = load_data.load_point_cloud(join.join(
-            [data_root_path, 'human_semantic', frame_id+'.pcd']), pointcloud, position=transformation[:3, 3])
+        pcd_file = join.join([data_root_path, 'human_semantic', frame_name+'.pcd'])
+        pointcloud = load_data.load_point_cloud(pcd_file, pointcloud, position=transformation[:3, 3])
 
         # update axis
         vis.remove_geometry(axis_pcd, reset_bounding_box=False)
@@ -230,38 +419,22 @@ def load_boxes(dets, load_data, data_root_path = None, mesh_dir=None):
             0, 0, 0]).transform(transformation)
         vis.add_geometry(axis_pcd, reset_bounding_box=False)
 
-        # remove pre boxes 
-        for bbox in boxes_list:
-            vis.remove_geometry(bbox, reset_bounding_box = False)
-        boxes_list.clear()
+        # remove mesh_list and boxes_list 
+        vis.remove_geometries(boxes_list, reset_bounding_box = False)
+        vis.remove_geometries(mesh_list, reset_bounding_box = False)
 
-        for mesh in mesh_list:
-            vis.remove_geometry(mesh, reset_bounding_box = False)
-        mesh_list.clear()
+        if f'{frame_idx:04d}' in files_by_frameid:
+            fid = f'{frame_idx:04d}'
+            # smpl = [join.join(['predict_smpl', f'{idx}_{id}.ply']) for id in files_by_frameid[idx]]
+            smpl_list = [join.join([fid, f'{id}.ply']) for id in files_by_frameid[fid]]
 
-        # ! Temp code, for visualization test
-        frame_mesh_dir = join.join([mesh_dir, f'{idx:04d}']) 
-        if os.path.exists(frame_mesh_dir):
-            mesh_list += vis.add_mesh_together(
-                frame_mesh_dir, os.listdir(frame_mesh_dir), plt.get_cmap("tab20")(idx % 20)[:3])
+            colors = [plt.get_cmap("tab20")(int(id) % 20)[:3] for id in human_ids]
+            mesh_list += vis.add_mesh_together(mesh_dir, smpl_list, colors = colors)
 
         if len(pointcloud.points) > 0 and len(boxes_lidar) >0:
-            for i, box in enumerate(boxes_lidar):
 
-                # transform = transformation[:3, :3] @ R.from_rotvec(
-                #     box[6] * np.array([0, 0, 1])).as_matrix()
-                # center = transformation[:3, :3] @ box[:3] + transformation[:3, 3]
-                transform = R.from_rotvec(
-                    box[6] * np.array([0, 0, 1])).as_matrix()
-                center = box[:3]
-                extend = box[3:6]
+            add_boxes_to_vis(boxes_lidar, vis, human_ids, boxes_list)
 
-                bbox = o3d.geometry.OrientedBoundingBox(center, transform, extend)
-
-                bbox.color = cmap[int(obj_id[i]) % len(cmap)] / 255
-                boxes_list.append(bbox)
-                vis.add_geometry(bbox, reset_bounding_box = False, waitKey=0)
-            
             # update point cloud
             if first_frame:
                 vis.add_geometry(pointcloud)
@@ -272,10 +445,10 @@ def load_boxes(dets, load_data, data_root_path = None, mesh_dir=None):
 
             vis.waitKey(1, helps=False)
         else:
-            print(f'Skip frame {idx}, {frame_id}')       
+            print(f'Skip frame {frame_idx}, {frame_name}')       
 
         vis.save_imgs(os.path.join(data_root_path, 'imgs'),
-                        '{:04d}.jpg'.format(idx))
+                      '{:04d}.jpg'.format(frame_idx))
 
 if __name__ == '__main__':
 
@@ -283,12 +456,34 @@ if __name__ == '__main__':
     parser.add_argument("--remote", '-R', action='store_true')
     parser.add_argument("--tracking_file", '-B', type=str, default='C:\\Users\\DAI\\Desktop\\temp\\0417-03_tracking.pkl')
     parser.add_argument("--mesh_dir", '-M', type=str, default='New Folder')
+    parser.add_argument("--type", '-T', type=int, default=1)
     args = parser.parse_args() 
 
     # load_boxes(dets, 'C:\\Users\\Yudi Dai\\Desktop\\segment\\velodyne')
     # load_boxes(dets, 'C:\\Users\\DAI\\Desktop\\temp\\velodyne')
     load_data = load_data_remote(args.remote)
+    data_root_path = os.path.dirname(args.tracking_file)
+    join = '/' if load_data.remote else '\\'
 
-    dets = load_data.load_pkl(args.tracking_file)
+    # ============================================================================
+    # 生成数据集的可视化，需要的数据包括
+    # ============================================================================
+    # 1. dets:      detection 的结果
+    if os.path.exists(args.tracking_file):
+        dets = load_data.load_pkl(args.tracking_file)
+        
+    # 2. poses:     slam的结果
+    poses = load_data.read_poses(data_root_path)
 
-    load_boxes(dets, load_data, os.path.dirname(args.tracking_file), mesh_dir = args.mesh_dir)
+    # 3. meshes:    lidarcap的结果
+    if args.mesh_dir is None:
+        mesh_dir = join.join([data_root_path, 'segment_by_tracking_03_rot'])
+    else:
+        mesh_dir = join.join([data_root_path, args.mesh_dir])
+
+    # 4. 摆正的每帧数据
+    if args.type == 1:
+        display_by_box_frame(load_data, dets, poses, data_root_path, mesh_dir, skip = 800)
+
+    elif args.type == 2:
+        display_by_human(load_data, mesh_dir, skip = 500)
