@@ -227,21 +227,26 @@ def read_pcd_from_server(filepath):
     finally:
         remote_file.close()
 
-def imges_to_video(path):
+def imges_to_video(path, delete=False):
     """输入文件夹图片所在文件夹, 利用ffmpeg生成视频
 
     Args:
         path (str): [图片所在文件夹]
     """            
-    strs = path.split('\\')[-1]
+    strs = os.path.basename(path)
     # strs = sys.argv[2]
     video_path = os.path.join(os.path.dirname(path), strs + '.mp4')
     video_path2 = os.path.join(os.path.dirname(path), strs + '.avi')
 
     # command = f"ffmpeg -f image2 -i {path}\\{strs}_%4d.jpg -b:v 10M -c:v h264 -r 20  {video_path}"
-    command = f"ffmpeg -f image2 -i {path}\\%4d.jpg -b:v 10M -c:v h264 -r 30  {video_path2}"
+    command = f"ffmpeg -f image2 -i \"{path}\\%4d.jpg\" -b:v 10M -c:v h264 -r 30  \"{video_path2}\""
     if not os.path.exists(video_path) and not os.path.exists(video_path2):
         run(command, shell=True)
+
+        if delete:
+            img_list = os.listdir(path)
+            for img in img_list:
+                os.remove(os.path.join(path, img))
 
 def read_pkl_file(file_name):
     """

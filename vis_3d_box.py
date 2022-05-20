@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import copy
 from o3dvis import read_pcd_from_server, client_server, list_dir_remote
 from simulatorLiDAR import hidden_point_removal, select_points_on_the_scan_line
-
+from tool_func import imges_to_video
 
 mat_box = o3d.visualization.rendering.MaterialRecord()
 # mat_box.shader = 'defaultUnlit'
@@ -375,7 +375,9 @@ def display_by_human(load_data, file_path, skip = 0):
 
             vis.waitKey(1, helps=False)
             
-            # vis.save_imgs(os.path.join(file_path, 'imgs'), f'{frame_idx:04d}.jpg')
+            vis.save_imgs(os.path.join(file_path, f'imgs'))
+            
+    imges_to_video(os.path.join(file_path, f'imgs'), delete=True)
 
 def display_by_box_frame(load_data, dets, poses, data_root_path = None, mesh_dir=None, skip = 0):
     """ 根据检测的bbox, 判断每帧的是否有对应的mesh, 有则显示
@@ -456,7 +458,7 @@ if __name__ == '__main__':
     parser.add_argument("--remote", '-R', action='store_true')
     parser.add_argument("--tracking_file", '-B', type=str, default='C:\\Users\\DAI\\Desktop\\temp\\0417-03_tracking.pkl')
     parser.add_argument("--mesh_dir", '-M', type=str, default='New Folder')
-    parser.add_argument("--type", '-T', type=int, default=1)
+    parser.add_argument("--type", '-T', type=int, default=2)
     args = parser.parse_args() 
 
     # load_boxes(dets, 'C:\\Users\\Yudi Dai\\Desktop\\segment\\velodyne')

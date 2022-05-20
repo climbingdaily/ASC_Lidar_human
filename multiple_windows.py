@@ -873,7 +873,7 @@ class AppWindow:
                 
                 # self.window.poll_events()
                 # self.window.update_renderer()
-                # cv2.waitKey(10)
+                cv2.waitKey(10)
 
             except Exception as e:
                 print(e)

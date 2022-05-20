@@ -6,7 +6,8 @@ import os
 import paramiko
 from pypcd import pypcd
 import matplotlib.pyplot as plt
-from util.segmentation import Segmentation
+# from util.segmentation import Segmentation
+from matplotlib.animation import FuncAnimation, writers
 
 def client_server(username = 'dyd', hostname = "10.24.80.241", port = 911):
     client = paramiko.SSHClient()
@@ -224,6 +225,10 @@ def print_help(is_print=True):
 class o3dvis():
     def __init__(self, window_name = 'DAI_VIS', width=1280, height=720):
         self.init_vis(window_name, width, height)
+        self.video_writer = None
+        self.width = width
+        self.height = height
+        self.img_save_count = 0
         print_help()
 
     def change_pause_status(self):
@@ -369,7 +374,7 @@ class o3dvis():
             if not mesh.has_triangle_uvs():
                 uv = np.array([[0.0, 0.0]] * (3 * len(mesh.triangles)))
                 mesh.triangle_uvs = o3d.utility.Vector2dVector(uv)
-                
+
             # mesh.vertices = Vector3dVector(np.array(mesh.vertices) - trajs[num[i],1:4] + mocap_trajs[num[i],1:4])
             if len(transformation) > idx:
                 mesh.transform(transformation[idx])
@@ -525,17 +530,32 @@ class o3dvis():
                 return False
             self.waitKey(10, helps=False)
 
-    def save_imgs(self, out_dir, filename):
+    def save_imgs(self, out_dir, filename=None):
         """[summary]
 
         Args:
             out_dir ([str]): [description]
             filename ([str]): [description]
         """        
-        outname = os.path.join(out_dir, filename)
+            
         if Keyword.SAVE_IMG:
+            # outname = os.path.join(out_dir, filename)
+            outname = os.path.join(out_dir, f'{self.img_save_count:04d}.jpg')
+            self.img_save_count += 1
+            # outname = os.path.join(out_dir, filename).replace('.jpg', '.mp4')
+            # outname = os.path.join(out_dir, filename).replace('.mp4', '.avi')
+            # img = np.asarray(self.vis.capture_screen_float_buffer())
+            # if self.video_writer is None:
+            #     fourcc = cv2.VideoWriter_fourcc(*"DIVX")
+            #     self.video_writer = cv2.VideoWriter(outname, fourcc, 15.0, (img.shape[1], img.shape[0]), True)
             os.makedirs(out_dir, exist_ok=True)
             self.vis.capture_screen_image(outname)
+            # r = img[..., 0:1]
+            # g = img[..., 1:2]
+            # b = img[..., 2:3]
+            # new_img = np.concatenate((b, g, r), axis = 2)
+            # # cv2.imshow('test', new_img)
+            # self.video_writer.write(new_img)
 
     def visulize_point_clouds(self, file_path, skip = 150, view = None, remote = False):
         """visulize the point clouds stream
