@@ -340,6 +340,7 @@ def display_by_human(load_data, file_path, skip = 0):
     geometries = []
     reg_mesh = []
     _, files_by_humanid = load_all_files_id(file_path)
+    mesh_path = file_path + "_predict_smpl"
 
     first_frame = False
     for humanid in files_by_humanid:
@@ -353,10 +354,10 @@ def display_by_human(load_data, file_path, skip = 0):
             
             transformation = make_cloud_in_vis_center(pointcloud)
 
-            # smpl = join.join(['predict_smpl', f'{frame_id}_{humanid}.ply'])
-            smpl = join.join([frame_id, f'{humanid}.ply'])
+            smpl = f'{humanid}_{frame_id}.ply'
+            # smpl = join.join([frame_id, f'{humanid}.ply'])
             color = plt.get_cmap("tab20")(int(humanid) % 20)[:3]
-            vis.add_mesh_together(file_path, [smpl], [color], geometries, [transformation])
+            vis.add_mesh_together(mesh_path, [smpl], [color], geometries, [transformation])
 
             if not first_frame:
                 vis.change_pause_status()
@@ -481,7 +482,7 @@ if __name__ == '__main__':
     if args.mesh_dir is None:
         mesh_dir = join.join([data_root_path, 'segment_by_tracking_03_rot'])
     else:
-        mesh_dir = join.join([data_root_path, args.mesh_dir])
+        mesh_dir = args.mesh_dir
 
     # 4. 摆正的每帧数据
     if args.type == 1:

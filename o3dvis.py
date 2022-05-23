@@ -371,9 +371,9 @@ class o3dvis():
             else:
                 mesh.paint_uniform_color(plt.get_cmap("tab20")(int(mesh_file.split('.')[0]))[:3])
             
-            if not mesh.has_triangle_uvs():
-                uv = np.array([[0.0, 0.0]] * (3 * len(mesh.triangles)))
-                mesh.triangle_uvs = o3d.utility.Vector2dVector(uv)
+            # if not mesh.has_triangle_uvs():
+            #     uv = np.array([[0.0, 0.0]] * (3 * len(mesh.triangles)))
+            #     mesh.triangle_uvs = o3d.utility.Vector2dVector(uv)
 
             # mesh.vertices = Vector3dVector(np.array(mesh.vertices) - trajs[num[i],1:4] + mocap_trajs[num[i],1:4])
             if len(transformation) > idx:
