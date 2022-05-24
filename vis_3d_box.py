@@ -374,7 +374,7 @@ def display_by_human(load_data, file_path, skip = 0):
 
             # geometries += registered
 
-            vis.waitKey(1, helps=False)
+            vis.waitKey(50, helps=False)
             
             vis.save_imgs(os.path.join(file_path, f'imgs'))
             

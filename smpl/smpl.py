@@ -1,40 +1,84 @@
-# -*- coding: utf-8 -*-
-# @Author  : jingyi
-'''
-                              _     _
-                             ( |---/ )
-                              ) . . (
-________________________,--._(___Y___)_,--._______________________
-                        `--'           `--'
-'''
-from __future__ import division
+"""
+This file contains the definition of the SMPL model
+forward: using pose and beta calculate vertex location
 
+function get joints: calculate joints from vertex location
+"""
+from __future__ import division
+from numpy.core.defchararray import array
+
+import cv2
 import torch
 import torch.nn as nn
 import numpy as np
-import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-import config as cfg
-from .config import *
+
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
-from .geometric_layers import rodrigues
 
+import smpl.config as cfg
+
+def quat2mat(quat):
+    """Convert quaternion coefficients to rotation matrix.
+    Args:
+        quat: size = [B, 4] 4 <===>(w, x, y, z)
+    Returns:
+        Rotation matrix corresponding to the quaternion -- size = [B, 3, 3]
+    """
+    norm_quat = quat
+    norm_quat = norm_quat / norm_quat.norm(p=2, dim=1, keepdim=True)
+    w, x, y, z = norm_quat[:, 0], norm_quat[:,
+                                            1], norm_quat[:, 2], norm_quat[:, 3]
+
+    B = quat.size(0)
+
+    w2, x2, y2, z2 = w.pow(2), x.pow(2), y.pow(2), z.pow(2)
+    wx, wy, wz = w * x, w * y, w * z
+    xy, xz, yz = x * y, x * z, y * z
+
+    rotMat = torch.stack([w2 + x2 - y2 - z2, 2 * xy - 2 * wz, 2 * wy + 2 * xz,
+                          2 * wz + 2 * xy, w2 - x2 + y2 - z2, 2 * yz - 2 * wx,
+                          2 * xz - 2 * wy, 2 * wx + 2 * yz, w2 - x2 - y2 + z2],
+                         dim=1).view(B, 3, 3)
+    return rotMat
+
+def rodrigues(theta):
+    """Convert axis-angle representation to rotation matrix.
+    Args:
+        theta: size = [B, 3]
+    Returns:
+        Rotation matrix corresponding to the quaternion -- size = [B, 3, 3]
+    """
+    l1norm = torch.norm(theta + 1e-8, p=2, dim=1)
+    angle = torch.unsqueeze(l1norm, -1)
+    normalized = torch.div(theta, angle)
+    angle = angle * 0.5
+    v_cos = torch.cos(angle)
+    v_sin = torch.sin(angle)
+    quat = torch.cat([v_cos, v_sin * normalized], dim=1)
+    return quat2mat(quat)
 
 class SMPL(nn.Module):
 
-    def __init__(self):
+    def __init__(self, 
+                 model_file=cfg.SMPL_FILE,
+                 gender='neutral'):
+        """
+        Args:
+            center_idx: index of center joint in our computations,
+            model_file: path to pkl files for the model
+            gender: 'neutral' (default) or 'female' or 'male'
+        """
         super(SMPL, self).__init__()
-        model_file = SMPL_FILE
         with open(model_file, 'rb') as f:
             smpl_model = pickle.load(f, encoding='iso-8859-1')
         J_regressor = smpl_model['J_regressor'].tocoo()
+
         row = J_regressor.row
         col = J_regressor.col
         data = J_regressor.data
+
         i = torch.LongTensor([row, col])
         v = torch.FloatTensor(data)
         J_regressor_shape = [24, 6890]
@@ -71,11 +115,12 @@ class SMPL(nn.Module):
         self.R = None
 
         J_regressor_extra = torch.from_numpy(
-            np.load(JOINT_REGRESSOR_TRAIN_EXTRA)).float()
+            np.load(cfg.JOINT_REGRESSOR_TRAIN_EXTRA)).float()
         self.register_buffer('J_regressor_extra', J_regressor_extra)
-        self.joints_idx = JOINTS_IDX
+        self.joints_idx = cfg.JOINTS_IDX
+        self.requires_grad_(False)
 
-    def forward(self, pose, beta):
+    def forward(self, pose, beta):  # return vertices location
         device = pose.device
         batch_size = pose.shape[0]
         v_template = self.v_template[None, :]
@@ -131,17 +176,106 @@ class SMPL(nn.Module):
         v = torch.matmul(T, rest_shape_h[:, :, :, None])[:, :, :3, 0]
         return v
 
-    def get_joints(self, vertices):
+    def get_full_joints(self, vertices):
         """
         This method is used to get the joint locations from the SMPL mesh
         Input:
             vertices: size = (B, 6890, 3)
         Output:
-            3D joints: size = (B, 38, 3)
+            3D joints: size = (B, 24, 3)
         """
         joints = torch.einsum('bik,ji->bjk', [vertices, self.J_regressor])
-        joints_extra = torch.einsum(
-            'bik,ji->bjk', [vertices, self.J_regressor_extra])
-        joints = torch.cat((joints, joints_extra), dim=1)
-        joints = joints[:, JOINTS_IDX]
         return joints
+
+    def get_leaf_joints(self, joints):
+        leaf_indexes = [0, 7, 8, 12, 20, 21]
+        return joints[:, leaf_indexes, :]
+
+
+def get_smpl_vertices(trans: torch.Tensor,
+                      poses: torch.Tensor,
+                      shapes: torch.Tensor,
+                      smpl: SMPL):
+    vertices = smpl(poses, shapes)
+    vertices += trans.unsqueeze(1)
+    return vertices
+
+
+def split_smpl_params(smpl_params: torch.Tensor):
+    if smpl_params.size(-1) == 85:
+        trans = smpl_params[..., :3].contiguous()
+        poses = smpl_params[..., 3:3 + 72].contiguous()
+        shapes = smpl_params[..., 3 + 72:].contiguous()
+        return trans, poses, shapes
+    else:
+        poses = smpl_params[..., :72].contiguous()
+        shapes = smpl_params[..., 72:].contiguous()
+        return poses, shapes
+
+
+colors = {
+    # colorbline/print/copy safe:
+    'light_blue': [244 / 255, 176 / 255, 132 / 255],
+    'light_pink': [.9, .7, .7],  # This is used to do no-3d
+}
+
+
+def _rotateY(points, angle):
+    """Rotate the points by a specified angle."""
+    ry = np.array([[np.cos(angle), 0., np.sin(angle)], [0., 1., 0.],
+                   [-np.sin(angle), 0., np.cos(angle)]])
+    return np.dot(points, ry)
+
+
+def get_alpha(imtmp, bgval=1.):
+    h, w = imtmp.shape[:2]
+    alpha = (~np.all(imtmp == bgval, axis=2)).astype(imtmp.dtype)
+
+    b_channel, g_channel, r_channel = cv2.split(imtmp)
+
+    im_RGBA = cv2.merge((b_channel, g_channel, r_channel, alpha.astype(
+        imtmp.dtype)))
+    return im_RGBA
+
+
+def append_alpha(imtmp):
+    alpha = np.ones_like(imtmp[:, :, 0]).astype(imtmp.dtype)
+    if np.issubdtype(imtmp.dtype, np.uint8):
+        alpha = alpha * 255
+    b_channel, g_channel, r_channel = cv2.split(imtmp)
+    im_RGBA = cv2.merge((b_channel, g_channel, r_channel, alpha))
+    return im_RGBA
+
+
+def render_model(verts,
+                 faces,
+                 w,
+                 h,
+                 cam,
+                 near=0.5,
+                 far=25,
+                 img=None,
+                 do_alpha=False,
+                 color_id=None):
+    rn = _create_renderer(
+        w=w, h=h, near=near, far=far, rt=cam.rt, t=cam.t, f=cam.f, c=cam.c)
+
+    # Uses img as background, otherwise white background.
+    if img is not None:
+        rn.background_image = img / 255. if img.max() > 1 else img
+
+    if color_id is None:
+        color = colors['light_blue']
+    else:
+        color_list = list(colors.values())
+        color = color_list[color_id % len(color_list)]
+
+    imtmp = simple_renderer(rn, verts, faces, color=color)
+
+    # If white bg, make transparent.
+    if img is None and do_alpha:
+        imtmp = get_alpha(imtmp)
+    elif img is not None and do_alpha:
+        imtmp = append_alpha(imtmp)
+
+    return imtmp
