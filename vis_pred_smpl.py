@@ -176,7 +176,7 @@ def vis_pt_and_smpl(pv, pc, v= None):
             # vis.vis.update_geometry(gt_2)    
             vis.vis.update_geometry(pred)  
 
-        vis.waitKey(100, helps=False)
+        vis.waitKey(40, helps=False)
         
     # vis.save_imgs(os.path.join(file_path, f'imgs'))
             
