@@ -87,8 +87,7 @@ class Segmentation():
             self.segments[i + count] = rest.select_by_index(inliers)
 
             labels = np.array(self.segments[i + count].cluster_dbscan(eps=d_threshold, min_points=15))
-            candidates = [len(np.where(labels == j)[0])
-                          for j in np.unique(labels)]
+            candidates = [len(np.where(labels == j)[0]) for j in np.unique(labels)]
             if len(labels) <= 0:
                 print('======================')
                 print('======Catch u=========')

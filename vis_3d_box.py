@@ -79,11 +79,17 @@ def load_all_files_id(folder):
     return files_by_framid, files_by_humanid
 
 class load_data_remote(object):
+    client = None
+    sftp_client = None
     def __init__(self, remote):
         self.remote = remote
         if remote:
-            self.client = client_server()
-            self.sftp_client = self.client.open_sftp()
+            load_data_remote.make_client_server()
+
+    @staticmethod
+    def make_client_server():
+        load_data_remote.client = client_server()
+        load_data_remote.sftp_client = load_data_remote.client.open_sftp()
 
     def isdir(self, path):
         if self.remote:
@@ -110,6 +116,7 @@ class load_data_remote(object):
                 print(f'Copy file {source} to {target} error')
         else:
             shutil.copyfile(source, target)
+            
     def exec_command(self, command):
         return self.client.exec_command(command)
     

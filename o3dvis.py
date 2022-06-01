@@ -31,9 +31,9 @@ def read_pcd_from_server(client, filepath, sftp_client = None):
         pc[:, 0] = pc_pcd.pc_data['x']
         pc[:, 1] = pc_pcd.pc_data['y']
         pc[:, 2] = pc_pcd.pc_data['z']
-        if pc_pcd.fields[-1] == 'rgb':
+        if 'rgb' in pc_pcd.fields:
             append = pypcd.decode_rgb_from_pcl(pc_pcd.pc_data['rgb'])/255
-        else:
+        if 'intensity' in pc_pcd.fields:        
             append = pc_pcd.pc_data[pc_pcd.fields[-1]].reshape(-1, 1)
         
         return np.concatenate((pc, append), axis=1)
@@ -290,14 +290,30 @@ class o3dvis():
         
 
     def set_view_zoom(self, info, count, steps):
-        """根据参数设置vis的视场角
-
-        Args:
-            vis ([o3d.visualization.VisualizerWithKeyCallback()]): [description]
-            info ([type]): [description]
-            count ([int]): [description]
-            steps ([int]): [description]
-        """        
+        """
+        It takes a dictionary of parameters, and sets the view of the vis object to the values in the
+        dictionary. 
+        
+        The dictionary can be either a single view, or a list of views. 
+        
+        If it's a list of views, then the function will interpolate between the views. 
+        
+        The interpolation is done by the count parameter, which is the number of frames that have been
+        rendered so far. 
+        
+        The steps parameter is the number of frames that will be rendered in total. 
+        
+        The function returns False, which means that the rendering will continue. 
+        
+        If it returned True, then the rendering would stop. 
+        
+        The function is called by the render_animation function, which is defined below.
+        
+        :param info: 
+        :param count: the current frame number
+        :param steps: the number of frames in the animation
+        """
+        
         ctr = self.vis.get_view_control()
         elements = ['zoom', 'lookat', 'up', 'front', 'field_of_view']
         if 'step1' in info.keys():
