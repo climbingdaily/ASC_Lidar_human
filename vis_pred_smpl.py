@@ -130,7 +130,7 @@ def vis_pt_and_smpl(pred_smpl, pc, gt_smpl= None):
     pred = o3d.io.read_triangle_mesh('.\\smpl\\sample.ply')
 
     init_param = False
-
+    centerz = 0
     for i in range(pred_smpl.shape[0]):
 
         # load data
@@ -147,7 +147,7 @@ def vis_pt_and_smpl(pred_smpl, pc, gt_smpl= None):
 
         # transform
         rt, center = make_cloud_in_vis_center(pointcloud) # 根据点的中心点，在XY平面将点云旋转平移
-        rt[:3, 3] = np.array([5, -1, center[-1]])
+        rt[:3, 3] = np.array([5, -0.5, centerz])
         if gt_smpl is not None:
             gt.transform(rt)
             gt.compute_vertex_normals()
@@ -157,6 +157,7 @@ def vis_pt_and_smpl(pred_smpl, pc, gt_smpl= None):
 
         # add to visualization
         if not init_param:
+            centerz = center[-1]
             vis.change_pause_status()
             vis.add_geometry(pointcloud, reset_bounding_box = True)    
             if gt_smpl is not None:
