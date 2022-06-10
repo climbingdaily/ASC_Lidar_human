@@ -266,7 +266,7 @@ class filter_tracking_by_interactive():
         """
 
         file_path = self.join.join([tracking_folder, f'{humanid}_{frameid}.pcd'])
-        scene_folder = self.join.join([os.path.dirname(tracking_folder), 'human_semantic'])
+        scene_folder = self.join.join([os.path.dirname(tracking_folder), '0604_haiyun_lidar_frames_rot'])
         # scene_path = list_dir_remote([self.load_data.client, scene_folder])[int(frameid)]
         scene_path = self.join.join([scene_folder, scene_path])
 
@@ -356,11 +356,11 @@ class filter_tracking_by_interactive():
         if self.remote:
             tracking_file_path = f'{basename}/{os.path.basename(basename)}_tracking.pkl'
         else:
-            tracking_file_path = self.join.join([basename, '0417-01_tracking.pkl'])
+            tracking_file_path = self.join.join([basename, '0604_haiyun_tracking.pkl'])
 
         tracking_results = self.load_data.load_pkl(tracking_file_path)
 
-        scene_folder = self.join.join([os.path.dirname(self.tracking_folder), 'human_semantic'])
+        scene_folder = self.join.join([os.path.dirname(self.tracking_folder), '0604_haiyun_lidar_frames_rot'])
         scene_paths = self.load_data.list_dir(scene_folder)
 
         # with open(tracking_file_path, 'rb') as f:
@@ -395,7 +395,7 @@ if __name__ == '__main__':
     # parser.add_argument('--folder', '-f', type=str,
     #                     help='A directory', default="C:\\Users\\DAI\\Desktop\\temp\\segment_by_tracking_03_select")
     parser.add_argument('--folder', '-f', type=str,
-                        help='A directory', default="/hdd/dyd/lidarhumanscene/0417-01/segment_by_tracking_select")
+                        help='A directory', default="/hdd/dyd/lidarhumanscene/data/0604_haiyun/segment_by_tracking")
     args, opts = parser.parse_known_args()
     # select_pcds_by_id(args.folder, ids)
     filter = filter_tracking_by_interactive(args.folder, remote=True)

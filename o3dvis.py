@@ -585,6 +585,7 @@ class o3dvis():
         """ 
         if remote:
             client = client_server()
+            client_client = client.open_sftp()
             files = sorted(list_dir_remote(client, file_path))
         else:
             files = sorted(os.listdir(file_path))
@@ -613,7 +614,7 @@ class o3dvis():
                 pointcloud.points = o3d.utility.Vector3dVector(pts[:, :3])  
             elif file_name.endswith('.pcd') or file_name.endswith('.ply'):
                 if remote:
-                    pcd = read_pcd_from_server(client, file_path + '/' + file_name)
+                    pcd = read_pcd_from_server(client, file_path + '/' + file_name, client_client)
                     pointcloud.points = o3d.utility.Vector3dVector(pcd[:, :3])
                     if pcd.shape[1] == 6:
                         pointcloud.colors = o3d.utility.Vector3dVector(pcd[:, 3:])  
@@ -624,24 +625,26 @@ class o3dvis():
                     pointcloud.colors = pcd.colors
                     
                     # ! Temp code, for visualization test
-                    mesh_dir = os.path.join(os.path.join(os.path.dirname(
-                        file_path), 'instance_human'), file_name.split('.')[0])
-                    if os.path.exists(mesh_dir):
-                        mesh_list += self.add_mesh_together(
-                            mesh_dir, os.listdir(mesh_dir), 'blue')
+                    # mesh_dir = os.path.join(os.path.join(os.path.dirname(
+                    #     file_path), 'instance_human'), file_name.split('.')[0])
+                    # if os.path.exists(mesh_dir):
+                    #     mesh_list += self.add_mesh_together(
+                    #         mesh_dir, os.listdir(mesh_dir), 'blue')
             else:
                 continue
             
+            self.vis.update_geometry(pointcloud)
+
             # ! Segment plane
-            pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
-            pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
-            for i in range(6):
-                _, inliers = pointcloud.segment_plane(distance_threshold=0.12, ransac_n=3, num_iterations=1200)
+            # pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.20, max_nn=20))
+            # pointcloud.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+            # for i in range(6):
+            #     _, inliers = pointcloud.segment_plane(distance_threshold=0.12, ransac_n=3, num_iterations=1200)
                 
-                temp_cloud = pointcloud.select_by_index(inliers, invert=True)
-                pointcloud.points = temp_cloud.points
-                pointcloud.colors = temp_cloud.colors
-                pointcloud.normals= temp_cloud.normals
+            #     temp_cloud = pointcloud.select_by_index(inliers, invert=True)
+            #     pointcloud.points = temp_cloud.points
+            #     pointcloud.colors = temp_cloud.colors
+            #     pointcloud.normals= temp_cloud.normals
 
             # ! if cluster the point cloud and visualize it
             # labels = np.array(pointcloud.cluster_dbscan(eps=0.4, min_points=20))
