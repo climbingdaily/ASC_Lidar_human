@@ -17,6 +17,7 @@ import copy
 from o3dvis import read_pcd_from_server, client_server, list_dir_remote
 from simulatorLiDAR import hidden_point_removal, select_points_on_the_scan_line
 from tool_func import imges_to_video
+import shutil
 
 mat_box = o3d.visualization.rendering.MaterialRecord()
 # mat_box.shader = 'defaultUnlit'
@@ -78,12 +79,46 @@ def load_all_files_id(folder):
     return files_by_framid, files_by_humanid
 
 class load_data_remote(object):
+    client = None
+    sftp_client = None
     def __init__(self, remote):
         self.remote = remote
         if remote:
-            self.client = client_server()
-            self.sftp_client = self.client.open_sftp()
+            load_data_remote.make_client_server()
 
+    @staticmethod
+    def make_client_server():
+        load_data_remote.client = client_server()
+        load_data_remote.sftp_client = load_data_remote.client.open_sftp()
+
+    def isdir(self, path):
+        if self.remote:
+            _, stdout, _ = self.client.exec_command(f'[ -d {path} ] && echo OK') # 远程判断文件是否存在
+            if stdout.read().strip() == b'OK':
+                return True
+            else:
+                return False
+        else:
+            return os.path.isdir(path)
+
+    def mkdir(self, path):
+        if self.remote:
+            _, stdout, _ = self.client.exec_command(f'[ -d {path} ] && echo OK') # 远程判断文件是否存在
+            if stdout.read().strip() != b'OK':
+                self.client.exec_command(f'mkdir {path}')
+        else:
+            os.makedirs(path, exist_ok=True)
+
+    def cpfile(self, source, target):
+        if self.remote:
+            _, stdout, _ = self.client.exec_command(f'cp {source} {target} && echo OK') # 远程判断文件是否存在
+            if stdout.read().strip() != b'OK':
+                print(f'Copy file {source} to {target} error')
+        else:
+            shutil.copyfile(source, target)
+            
+    def exec_command(self, command):
+        return self.client.exec_command(command)
     
     def list_dir(self, folder):
         if self.remote:
@@ -103,6 +138,7 @@ class load_data_remote(object):
             # files = sorted(list_dir_remote(client, file_path))
             _, stdout, _ = self.client.exec_command(f'[ -f {file_name} ] && echo OK') # 远程判断文件是否存在
             if stdout.read().strip() != b'OK':
+                print(f'Load {file_name} error')
                 return pointcloud
         elif not os.path.exists(file_name):
             return pointcloud
@@ -138,9 +174,6 @@ class load_data_remote(object):
 
     def load_pkl(self, filepath):
         if self.remote:
-            # client = client_server()
-            # sftp_client = client.open_sftp()
-
             with self.sftp_client.open(filepath, mode='rb') as f:
                 dets = pkl.load(f)
 
@@ -340,6 +373,7 @@ def display_by_human(load_data, file_path, skip = 0):
     geometries = []
     reg_mesh = []
     _, files_by_humanid = load_all_files_id(file_path)
+    mesh_path = file_path + "_predict_smpl"
 
     first_frame = False
     for humanid in files_by_humanid:
@@ -353,10 +387,10 @@ def display_by_human(load_data, file_path, skip = 0):
             
             transformation = make_cloud_in_vis_center(pointcloud)
 
-            # smpl = join.join(['predict_smpl', f'{frame_id}_{humanid}.ply'])
-            smpl = join.join([frame_id, f'{humanid}.ply'])
+            smpl = f'{humanid}_{frame_id}.ply'
+            # smpl = join.join([frame_id, f'{humanid}.ply'])
             color = plt.get_cmap("tab20")(int(humanid) % 20)[:3]
-            vis.add_mesh_together(file_path, [smpl], [color], geometries, [transformation])
+            vis.add_mesh_together(mesh_path, [smpl], [color], geometries, [transformation])
 
             if not first_frame:
                 vis.change_pause_status()
@@ -373,7 +407,7 @@ def display_by_human(load_data, file_path, skip = 0):
 
             # geometries += registered
 
-            vis.waitKey(1, helps=False)
+            vis.waitKey(50, helps=False)
             
             vis.save_imgs(os.path.join(file_path, f'imgs'))
             
@@ -481,7 +515,7 @@ if __name__ == '__main__':
     if args.mesh_dir is None:
         mesh_dir = join.join([data_root_path, 'segment_by_tracking_03_rot'])
     else:
-        mesh_dir = join.join([data_root_path, args.mesh_dir])
+        mesh_dir = args.mesh_dir
 
     # 4. 摆正的每帧数据
     if args.type == 1:
