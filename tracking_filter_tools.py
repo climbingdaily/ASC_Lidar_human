@@ -191,7 +191,7 @@ class filter_tracking_by_interactive():
         pre_framid = int(self.checked_ids[humanid])
         pre_box = self.get_box(pre_framid, humanid, tracking_results)
 
-        dist = np.linalg.norm(pre_box[:3] - cur_box[:3])
+        dist = np.linalg.norm(pre_box[:2] - cur_box[:2])
         vel = dist * framerate / (frameid - pre_framid)
 
         return abs(vel), pre_box, cur_box, pre_framid
