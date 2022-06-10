@@ -44,18 +44,26 @@ class filter_tracking_by_interactive():
         self.remote = remote
         self.load_data = load_data_remote(remote)
         self.join = '/' if remote else '\\'
+        self._raw_select = self.tracking_folder + '_raw_select'
+        self._select = self.tracking_folder + '_select'
+        self.load_data.mkdir(self._select)
+        self.load_data.mkdir(self._raw_select)
 
-    def copy_save_files(self):
+    def copy_human_pcd(self, save_file):
+        self.load_data.mkdir(self._raw_select)
+        source = self.join.join([self.tracking_folder, save_file])
+        target = self.join.join([self._raw_select, save_file])
+        self.load_data.cpfile(source, target)
+
+    def copy_save_files(self, reid=False):
         """
         Copy the pcd files in the tracking folder to the tracking_select folder, and rename the pcd files
         according to the reID dictionary.
         """
         # 在远程设备上新建文件夹
-        self.load_data.mkdir(self.tracking_folder + '_select')
-        self.load_data.mkdir(self.tracking_folder + '_raw_select')
-        ss = [self.join.join([self.tracking_folder, p]) for p in self.save_list]
-        tt = [self.join.join([self.tracking_folder + '_raw_select', p]) for p in self.save_list]
-        [self.load_data.cpfile(f[0], f[1]) for f in zip(ss, tt)]
+        # ss = [self.join.join([self.tracking_folder, p]) for p in self.save_list]
+        # tt = [self.join.join([self._raw_select, p]) for p in self.save_list]
+        # [self.load_data.cpfile(f[0], f[1]) for f in zip(ss, tt)]
 
         for pcd_path in self.save_list:
             source = self.join.join([self.tracking_folder, pcd_path])
@@ -63,7 +71,7 @@ class filter_tracking_by_interactive():
                 continue
             if pcd_path.endswith('.pcd'):
                 humanid, appendix = pcd_path.split('_')
-                target = self.join.join([self.tracking_folder + '_select', pcd_path])
+                target = self.join.join([self._select, pcd_path])
 
                 if humanid in self.reID:
                     new_id = self.reID[humanid]
@@ -75,7 +83,7 @@ class filter_tracking_by_interactive():
                 # else:
                     # shutil.copyfile(source, target)
                 self.load_data.cpfile(source, target)
-                print(f'{pcd_path} saved in {self.tracking_folder}_select')
+                print(f'{pcd_path} saved in {self._select}')
             
     def add_box(self, box, color):
         transform = R.from_rotvec(
@@ -198,7 +206,7 @@ class filter_tracking_by_interactive():
 
     def is_false_box(self, cur_box, dist_thresh=0.3):
         for box in self.none_human_boxes:
-            dist = np.linalg.norm(cur_box[:3] - box[:3])
+            dist = np.linalg.norm(cur_box[:2] - box[:2])
             if dist < dist_thresh:
                 self.none_human_boxes.append(cur_box)
                 return True
@@ -206,7 +214,7 @@ class filter_tracking_by_interactive():
 
     def is_real_box(self, cur_box, dist_thresh=0.3):
         for box in self.real_human_boxes:
-            dist = np.linalg.norm(cur_box[:3] - box[:3])
+            dist = np.linalg.norm(cur_box[:2] - box[:2])
             if dist < dist_thresh:
                 self.real_human_boxes.append(cur_box)
                 return True
@@ -343,7 +351,7 @@ class filter_tracking_by_interactive():
                 tracking_list[frameid] = [humanid, ]
         return tracking_list
 
-    def run(self, filtered = False):
+    def run(self, start=0, filtered = False):
         """
         > It takes a tracking folder, and a filtering method, and returns a list of pcd files that pass the
         filtering method
@@ -367,6 +375,8 @@ class filter_tracking_by_interactive():
         #     tracking_results = pkl.load(f)
         
         for frameid in sorted(tracking_list.keys()):
+            if int(frameid) < start:
+                continue
             for humanid in tracking_list[frameid]:
                 if self.filtering_method(frameid, humanid, 
                                          self.tracking_folder, 
@@ -376,6 +386,7 @@ class filter_tracking_by_interactive():
                         self.real_person_id.append(humanid)
 
                     self.save_list.append(f'{humanid}_{frameid}.pcd')
+                    self.copy_human_pcd(f'{humanid}_{frameid}.pcd')
 
                 else:
                     pass
@@ -391,7 +402,7 @@ class filter_tracking_by_interactive():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--remote", '-R', action='store_true')
-
+    parser.add_argument("--start_frame", '-S', type=int, default=0)
     # parser.add_argument('--folder', '-f', type=str,
     #                     help='A directory', default="C:\\Users\\DAI\\Desktop\\temp\\segment_by_tracking_03_select")
     parser.add_argument('--folder', '-f', type=str,
@@ -399,5 +410,5 @@ if __name__ == '__main__':
     args, opts = parser.parse_known_args()
     # select_pcds_by_id(args.folder, ids)
     filter = filter_tracking_by_interactive(args.folder, remote=True)
-    filter.run()
+    filter.run(start=args.start_frame)
 
