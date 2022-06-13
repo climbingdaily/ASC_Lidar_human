@@ -120,7 +120,8 @@ class filter_tracking_by_interactive():
         if scene_path is not None:
             # pts = o3d.io.read_point_cloud(scene_path)
             pts = self.load_data.load_point_cloud(scene_path)
-            pts.paint_uniform_color([0.5,0.5,0.5])
+            if not pts.has_colors():
+                pts.paint_uniform_color([0.5,0.5,0.5])
             if self.view_initialized:
                 self.vis.add_geometry(pts, reset_bounding_box=False)
             else:
