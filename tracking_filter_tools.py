@@ -241,7 +241,61 @@ class filter_tracking_by_interactive():
                     humanid = self.reID[humanid]
                 self.reID[cur_humanid] = humanid
 
-    def filtering_method(self, frameid, humanid, tracking_folder, tracking_results, scene_path, filtered = False):
+    def tracking_human(self, frameid, humanid, tracking_folder, tracking_results, scene_path, filtered = False):
+        file_path = self.join.join([tracking_folder, f'{humanid}_{frameid}.pcd'])
+
+        is_person = False
+
+        for geometry in self.pre_geometries:
+            self.vis.remove_geometry(geometry, reset_bounding_box=False)
+
+        if humanid in self.checked_ids:
+            
+            vel, pre_box, cur_box, pre_framid = self.is_too_far(frameid, humanid, tracking_results)
+
+            if vel > 5:
+                print(f'Checking Human:{humanid} Cur frame:{frameid} (red) | Pre frame {pre_framid} (blue)')
+                if not self.is_false_box(cur_box):
+                    if self.is_real_box(cur_box) or filtered \
+                        or self.interactive_choose(file_path=file_path, 
+                                                scene_path=scene_path, 
+                                                pre_box=pre_box, 
+                                                cur_box=cur_box, 
+                                                strs='a real human'):
+                        is_person = True
+                        self.real_human_boxes.append(cur_box)
+                        # self.choose_new_id(cur_box, humanid, frameid)
+                    elif humanid in self.real_person_id:
+                        # not a person, remove it from the real human list
+                        self.real_person_id.pop(self.real_person_id.index(humanid))
+                        self.none_human_boxes.append(cur_box)
+
+                    else:
+                        self.none_human_boxes.append(cur_box)
+
+            elif humanid in self.real_person_id:
+                is_person = True
+
+            else:
+                pass
+
+        else:
+            print(f'Checking Human:{humanid} Frame:{frameid}')
+            cur_box = self.get_box(frameid, humanid, tracking_results)
+            if not self.is_false_box(cur_box):
+                if self.is_real_box(cur_box) or filtered or self.interactive_choose(
+                                    file_path=file_path, 
+                                    scene_path=scene_path, 
+                                    strs='a real human'):
+                    self.choose_new_id(cur_box, humanid, frameid)
+                    is_person = True
+                    self.real_human_boxes.append(cur_box)
+                else:
+                    self.none_human_boxes.append(cur_box)
+
+        return is_person
+
+    def is_real_human(self, frameid, humanid, tracking_folder, tracking_results, scene_path, filtered = False):
         """
         It takes in a frameid, humanid, tracking_folder, tracking_results, scene_path, and filtered. 
         
@@ -275,9 +329,6 @@ class filter_tracking_by_interactive():
         """
 
         file_path = self.join.join([tracking_folder, f'{humanid}_{frameid}.pcd'])
-        scene_folder = self.join.join([os.path.dirname(tracking_folder), '0604_haiyun_lidar_frames_rot'])
-        # scene_path = list_dir_remote([self.load_data.client, scene_folder])[int(frameid)]
-        scene_path = self.join.join([scene_folder, scene_path])
 
         is_person = False
 
@@ -291,7 +342,8 @@ class filter_tracking_by_interactive():
             if vel > 5:
                 print(f'Checking Human:{humanid} Cur frame:{frameid} (red) | Pre frame {pre_framid} (blue)')
                 if not self.is_false_box(cur_box):
-                    if self.is_real_box(cur_box) or filtered or self.interactive_choose(file_path=file_path, 
+                    if self.is_real_box(cur_box) or filtered \
+                        or self.interactive_choose(file_path=file_path, 
                                                 scene_path=scene_path, 
                                                 pre_box=pre_box, 
                                                 cur_box=cur_box, 
@@ -352,12 +404,70 @@ class filter_tracking_by_interactive():
                 tracking_list[frameid] = [humanid, ]
         return tracking_list
 
+    def filter_human_2(self, frameid, humanid, tracking_results, scene_paths, filtered):  
+        
+        self.checked_ids[humanid] = frameid  # save previous frameid for humanid 
+        
+        cur_box = self.get_box(frameid, humanid, tracking_results)
+
+
+
+        is_human = self.is_real_human(frameid, humanid, 
+                                    self.tracking_folder, 
+                                    tracking_results, 
+                                    scene_paths[int(frameid)], filtered)
+
+        if is_human:
+            if humanid not in self.real_person_id:
+                self.real_person_id.append(humanid)
+
+            self.save_list.append(f'{humanid}_{frameid}.pcd')
+            self.pre_human_boxes = {'box': cur_box, 'frameid': frameid, 'humanid':humanid}
+            # self.copy_human_pcd(f'{humanid}_{frameid}.pcd')
+
+        else:
+            pass
+
+
+    def filter_human(self, frameid, humanid, tracking_results, scene_paths, filtered):  
+        """
+        If the human is real, then save the human's ID and the frame ID to a list, and copy the human's
+        point cloud data to a new folder
+        
+        :param frameid: the current frame id
+        :param humanid: the id of the human
+        :param tracking_results: a dictionary of tracking results, where the key is the frameid and the
+        value is a list of humanid and bounding box
+        :param scene_paths: a list of paths to the scenes
+        :param filtered: a list of human ids that have been filtered out
+        """
+        is_human = self.is_real_human(frameid, humanid, 
+                                    self.tracking_folder, 
+                                    tracking_results, 
+                                    scene_paths[int(frameid)], filtered)
+        if is_human:
+            if humanid not in self.real_person_id:
+                self.real_person_id.append(humanid)
+
+            self.save_list.append(f'{humanid}_{frameid}.pcd')
+            self.copy_human_pcd(f'{humanid}_{frameid}.pcd')
+
+        else:
+            pass
+
+        self.checked_ids[humanid] = frameid  # save previous frameid for humanid 
+        
+        cur_box = self.get_box(frameid, humanid, tracking_results)
+
+        self.pre_human_boxes[humanid] = {'box': cur_box, 'frameid': frameid}
+
     def run(self, start=0, filtered = False):
         """
-        > It takes a tracking folder, and a filtering method, and returns a list of pcd files that pass the
-        filtering method
+        It takes in a tracking folder, loads the tracking results, and then for each frame and human, it
+        filters the human and saves the filtered results
         
-        :param filtered: whether to use filtered or raw data, defaults to False (optional)
+        :param start: the frame number to start from, defaults to 0 (optional)
+        :param filtered: if True, only the filtered humans will be saved, defaults to False (optional)
         """
         tracking_list = self.load_existing_tracking_list(self.tracking_folder)
         basename = os.path.dirname(self.tracking_folder)
@@ -371,32 +481,13 @@ class filter_tracking_by_interactive():
 
         scene_folder = self.join.join([os.path.dirname(self.tracking_folder), '0604_haiyun_lidar_frames_rot'])
         scene_paths = self.load_data.list_dir(scene_folder)
-
-        # with open(tracking_file_path, 'rb') as f:
-        #     tracking_results = pkl.load(f)
+        scene_paths = [self.join.join([scene_folder, p]) for p in scene_paths]
         
         for frameid in sorted(tracking_list.keys()):
             if int(frameid) < start:
                 continue
             for humanid in tracking_list[frameid]:
-                if self.filtering_method(frameid, humanid, 
-                                         self.tracking_folder, 
-                                         tracking_results, 
-                                         scene_paths[int(frameid)], filtered):
-                    if humanid not in self.real_person_id:
-                        self.real_person_id.append(humanid)
-
-                    self.save_list.append(f'{humanid}_{frameid}.pcd')
-                    self.copy_human_pcd(f'{humanid}_{frameid}.pcd')
-
-                else:
-                    pass
-
-                self.checked_ids[humanid] = frameid  # save previous frameid for humanid 
-                
-                cur_box = self.get_box(frameid, humanid, tracking_results)
-
-                self.pre_human_boxes[humanid] = {'box': cur_box, 'frameid': frameid}
+                self.filter_human(frameid, humanid, tracking_results, scene_paths, filtered)
         
         self.copy_save_files()
 
