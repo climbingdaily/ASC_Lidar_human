@@ -18,6 +18,7 @@ from o3dvis import read_pcd_from_server, client_server, list_dir_remote
 from simulatorLiDAR import hidden_point_removal, select_points_on_the_scan_line
 from tool_func import imges_to_video
 import shutil
+from pypcd import pypcd
 
 mat_box = o3d.visualization.rendering.MaterialRecord()
 # mat_box.shader = 'defaultUnlit'
@@ -183,12 +184,43 @@ class load_data_remote(object):
 
         return dets
 
-    def read_poses(self, data_root_path):
+    def write_pcd(self, filepath, data, rgb=None, intensity=None, mode='w') -> None:
+
+        if rgb is not None and intensity is not None:
+            rgb = pypcd.encode_rgb_for_pcl(rgb.astype(np.uint8))
+            dt = np.dtype([('x', np.float32), ('y', np.float32), ('z', np.float32),('rgb', np.float32), ('intensity', np.uint8)])
+            pc = np.rec.fromarrays([data[:,0], data[:,1], data[:,2], rgb, intensity], dtype=dt)
+
+        elif rgb is not None:
+            rgb = pypcd.encode_rgb_for_pcl(rgb.astype(np.uint8))
+            dt = np.dtype([('x', np.float32), ('y', np.float32), ('z', np.float32),('rgb', np.float32)])
+            pc = np.rec.fromarrays([data[:,0], data[:,1], data[:,2], rgb], dtype=dt)
+
+        elif intensity is not None:
+            dt = np.dtype([('x', np.float32), ('y', np.float32), ('z', np.float32),('intensity', np.uint8)])
+            pc = np.rec.fromarrays([data[:,0], data[:,1], data[:,2], intensity], dtype=dt)
+
+        else:
+            dt = np.dtype([('x', np.float32), ('y', np.float32), ('z', np.float32)])
+            pc = np.rec.fromarrays([data[:,0], data[:,1], data[:,2]], dtype=dt)
+
+        pc = pypcd.PointCloud.from_array(pc)
+        with self.sftp_client.open(filepath, mode = mode) as f:
+            pc.save_pcd_to_fileobj(f, compression='binary')
+
+    def write_txt(self, filepath, data, mode='w') -> None:
+        save_data = []
+        for line in data:
+            ll = ''
+            for l in line:
+                ll += f"{l:.4f}\t"
+            save_data.append(ll + '\n')
         
+        with self.sftp_client.open(filepath, mode = mode) as f:
+            f.writelines(save_data)
+
+    def read_poses(self, data_root_path):
         if self.remote:
-            
-            # client = client_server()
-            # sftp_client = client.open_sftp()
             with self.sftp_client.open(data_root_path + '/poses.txt', mode='r') as f:
                 poses = f.readlines()
 

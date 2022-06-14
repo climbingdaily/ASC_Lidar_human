@@ -1,16 +1,10 @@
-from locale import currency
 import numpy as np
-import sys 
 import os
 import shutil
 import argparse
 import open3d as o3d
-from sqlalchemy import true
-from sympy import O
 from o3dvis import o3dvis
-import pickle as pkl
 from scipy.spatial.transform import Rotation as R
-import matplotlib.pyplot as plt
 from vis_3d_box import load_data_remote
 from o3dvis import list_dir_remote
 
@@ -28,6 +22,16 @@ ids = [2,303,216,421,733,832,1037,1207,3437,3116,3218,4753,4922,5222,5725] # 041
 ids = [9, 152, 181, 193, 293, 379, 451, 674, 962, 1601, 1709, 2319, 2777, 1395, 2839, 92, 187, 275, 310, 1905, 1960] # 0417-03
 
 
+def nearest_box(pre_trajs, box_list, diff_frames, framerate = 20, dist_thresh=0.3):
+    
+    dist_XY = [np.linalg.norm(pre_trajs[-1, :2] - box[:2]) for box in box_list]
+    diff_Z = [abs(pre_trajs[-1, 2] - box[2]) for box in box_list]
+    min_index = dist_XY.index(min(dist_XY))
+    min_vel_XY = min(dist_XY) * framerate / diff_frames
+    min_vel_Z = diff_Z[min_index] * framerate / diff_frames
+    # if min_vel_XY < 5 :
+    return min_index, min_vel_XY, min_vel_Z
+
 class filter_tracking_by_interactive():
     def __init__(self, tracking_folder, remote=False):
         self.view_initialized = False
@@ -37,6 +41,7 @@ class filter_tracking_by_interactive():
         self.save_list = []
         self.pre_geometries = []
         self.pre_human_boxes = {}
+        self.trajectory = {}
         self.none_human_boxes = []
         self.real_human_boxes = []
         self.reID = {}
@@ -64,6 +69,7 @@ class filter_tracking_by_interactive():
         # ss = [self.join.join([self.tracking_folder, p]) for p in self.save_list]
         # tt = [self.join.join([self._raw_select, p]) for p in self.save_list]
         # [self.load_data.cpfile(f[0], f[1]) for f in zip(ss, tt)]
+        pc = o3d.geometry.PointCloud()
 
         for pcd_path in self.save_list:
             source = self.join.join([self.tracking_folder, pcd_path])
@@ -76,14 +82,15 @@ class filter_tracking_by_interactive():
                 if humanid in self.reID:
                     new_id = self.reID[humanid]
                     target = self.join.join([os.path.dirname(target), f'{new_id}_{appendix}'])
-                    # pts = self.load_data.load_point_cloud(source)
-                    # pts = o3d.io.read_point_cloud(source)
-                    # pts.paint_uniform_color(plt.get_cmap("tab20")(int(humanid) % 20)[:3])
-                    # o3d.io.write_point_cloud(target, pts)
-                # else:
-                    # shutil.copyfile(source, target)
+                pc += self.load_data.load_point_cloud(source)
+
                 self.load_data.cpfile(source, target)
                 print(f'{pcd_path} saved in {self._select}')
+
+        save_all_pcd_path = self.join.join([os.path.dirname(self.tracking_folder), 'all_human.pcd'])
+        xyz = np.asarray(pc.points)
+        colors = np.asarray(pc.colors)
+        self.load_data.write_pcd(save_all_pcd_path, xyz, rgb = colors*255)
             
     def add_box(self, box, color):
         transform = R.from_rotvec(
@@ -206,17 +213,19 @@ class filter_tracking_by_interactive():
         return abs(vel), pre_box, cur_box, pre_framid
 
     def is_false_box(self, cur_box, dist_thresh=0.3):
-        for box in self.none_human_boxes:
-            dist = np.linalg.norm(cur_box[:2] - box[:2])
-            if dist < dist_thresh:
+        for box in self.none_human_boxes: 
+            dist_xy = np.linalg.norm(cur_box[:2] - box[:2])
+            dist_z = abs(cur_box[2] - box[2])
+            if dist_xy < dist_thresh and dist_z < 1:
                 self.none_human_boxes.append(cur_box)
                 return True
         return False
 
     def is_real_box(self, cur_box, dist_thresh=0.3):
         for box in self.real_human_boxes:
-            dist = np.linalg.norm(cur_box[:2] - box[:2])
-            if dist < dist_thresh:
+            dist_xy = np.linalg.norm(cur_box[:2] - box[:2])
+            dist_z = abs(cur_box[2] - box[2])
+            if dist_xy < dist_thresh and dist_z < 1:
                 self.real_human_boxes.append(cur_box)
                 return True
         return False
@@ -240,60 +249,6 @@ class filter_tracking_by_interactive():
                 while humanid in self.reID:
                     humanid = self.reID[humanid]
                 self.reID[cur_humanid] = humanid
-
-    def tracking_human(self, frameid, humanid, tracking_folder, tracking_results, scene_path, filtered = False):
-        file_path = self.join.join([tracking_folder, f'{humanid}_{frameid}.pcd'])
-
-        is_person = False
-
-        for geometry in self.pre_geometries:
-            self.vis.remove_geometry(geometry, reset_bounding_box=False)
-
-        if humanid in self.checked_ids:
-            
-            vel, pre_box, cur_box, pre_framid = self.is_too_far(frameid, humanid, tracking_results)
-
-            if vel > 5:
-                print(f'Checking Human:{humanid} Cur frame:{frameid} (red) | Pre frame {pre_framid} (blue)')
-                if not self.is_false_box(cur_box):
-                    if self.is_real_box(cur_box) or filtered \
-                        or self.interactive_choose(file_path=file_path, 
-                                                scene_path=scene_path, 
-                                                pre_box=pre_box, 
-                                                cur_box=cur_box, 
-                                                strs='a real human'):
-                        is_person = True
-                        self.real_human_boxes.append(cur_box)
-                        # self.choose_new_id(cur_box, humanid, frameid)
-                    elif humanid in self.real_person_id:
-                        # not a person, remove it from the real human list
-                        self.real_person_id.pop(self.real_person_id.index(humanid))
-                        self.none_human_boxes.append(cur_box)
-
-                    else:
-                        self.none_human_boxes.append(cur_box)
-
-            elif humanid in self.real_person_id:
-                is_person = True
-
-            else:
-                pass
-
-        else:
-            print(f'Checking Human:{humanid} Frame:{frameid}')
-            cur_box = self.get_box(frameid, humanid, tracking_results)
-            if not self.is_false_box(cur_box):
-                if self.is_real_box(cur_box) or filtered or self.interactive_choose(
-                                    file_path=file_path, 
-                                    scene_path=scene_path, 
-                                    strs='a real human'):
-                    self.choose_new_id(cur_box, humanid, frameid)
-                    is_person = True
-                    self.real_human_boxes.append(cur_box)
-                else:
-                    self.none_human_boxes.append(cur_box)
-
-        return is_person
 
     def is_real_human(self, frameid, humanid, tracking_folder, tracking_results, scene_path, filtered = False):
         """
@@ -351,11 +306,6 @@ class filter_tracking_by_interactive():
                         is_person = True
                         self.real_human_boxes.append(cur_box)
                         # self.choose_new_id(cur_box, humanid, frameid)
-                    elif humanid in self.real_person_id:
-                        # not a person, remove it from the real human list
-                        self.real_person_id.pop(self.real_person_id.index(humanid))
-                        self.none_human_boxes.append(cur_box)
-
                     else:
                         self.none_human_boxes.append(cur_box)
 
@@ -404,30 +354,31 @@ class filter_tracking_by_interactive():
                 tracking_list[frameid] = [humanid, ]
         return tracking_list
 
-    def filter_human_2(self, frameid, humanid, tracking_results, scene_paths, filtered):  
-        
-        self.checked_ids[humanid] = frameid  # save previous frameid for humanid 
+    def raw_tracking_selected_human(self, frameid, humanid, tracking_results, scene_paths, filtered = 0):  
         
         cur_box = self.get_box(frameid, humanid, tracking_results)
 
-
-
-        is_human = self.is_real_human(frameid, humanid, 
+        if filtered >=0:
+            is_human = self.is_real_human(frameid, humanid, 
                                     self.tracking_folder, 
                                     tracking_results, 
-                                    scene_paths[int(frameid)], filtered)
+                                    scene_paths[int(frameid)], filtered > 0)
+        else:
+            is_human = False
+            box = self.get_box(frameid, humanid, tracking_results)
+            self.none_human_boxes.append(box)
 
         if is_human:
             if humanid not in self.real_person_id:
                 self.real_person_id.append(humanid)
 
+            self.checked_ids[humanid] = frameid  
+            self.trajectory[frameid] = {'box': cur_box, 'humanid': humanid}
             self.save_list.append(f'{humanid}_{frameid}.pcd')
-            self.pre_human_boxes = {'box': cur_box, 'frameid': frameid, 'humanid':humanid}
+            self.pre_human_boxes[humanid] = {'box': cur_box, 'frameid': frameid}
             # self.copy_human_pcd(f'{humanid}_{frameid}.pcd')
 
-        else:
-            pass
-
+        return is_human, humanid
 
     def filter_human(self, frameid, humanid, tracking_results, scene_paths, filtered):  
         """
@@ -452,8 +403,8 @@ class filter_tracking_by_interactive():
             self.save_list.append(f'{humanid}_{frameid}.pcd')
             self.copy_human_pcd(f'{humanid}_{frameid}.pcd')
 
-        else:
-            pass
+        elif humanid in self.real_person_id:
+            self.real_person_id.pop(self.real_person_id.index(humanid))
 
         self.checked_ids[humanid] = frameid  # save previous frameid for humanid 
         
@@ -461,7 +412,9 @@ class filter_tracking_by_interactive():
 
         self.pre_human_boxes[humanid] = {'box': cur_box, 'frameid': frameid}
 
-    def run(self, start=0, filtered = False):
+        return is_human, humanid
+
+    def run(self, start=0, tracking=False, filtered = False):
         """
         It takes in a tracking folder, loads the tracking results, and then for each frame and human, it
         filters the human and saves the filtered results
@@ -480,27 +433,63 @@ class filter_tracking_by_interactive():
         tracking_results = self.load_data.load_pkl(tracking_file_path)
 
         scene_folder = self.join.join([os.path.dirname(self.tracking_folder), '0604_haiyun_lidar_frames_rot'])
+        tracking_traj_path = self.join.join([os.path.dirname(self.tracking_folder), 'tracking_trajectory.txt'])
         scene_paths = self.load_data.list_dir(scene_folder)
         scene_paths = [self.join.join([scene_folder, p]) for p in scene_paths]
         
         for frameid in sorted(tracking_list.keys()):
             if int(frameid) < start:
                 continue
-            for humanid in tracking_list[frameid]:
-                self.filter_human(frameid, humanid, tracking_results, scene_paths, filtered)
-        
+            humanids = tracking_list[frameid]
+            if tracking:
+                # 找到所有的box
+                bboxes = [self.get_box(frameid, h, tracking_results) for h in tracking_list[frameid]]
+
+                pre_frameids = [k for k in self.trajectory.keys()]
+                if len(pre_frameids) > 0:
+
+                    trajectory = np.array([self.trajectory[fid]['box'][:3] for fid in pre_frameids]).astype(np.float32)
+                    append =  np.array([self.trajectory[fid]['humanid'] for fid in pre_frameids]).astype(np.float32)
+                    save_traj = np.concatenate((trajectory.reshape(-1, 3), append.reshape(-1, 1)), axis=1)
+                    # self.load_data.write_txt(tracking_traj_path, save_traj)
+                    pre_box = self.trajectory[pre_frameids[-1]]['box']
+                    # 挑出离上一个最近的
+                    # todo: 取最近的四个点中的非离群点算距离
+                    gap = int(frameid) - int(pre_frameids[-1])
+                    nn_id, vel_xy, vel_z = nearest_box(trajectory, bboxes, gap)
+                    # is_human = True if humanid in self.real_person_id and vel_xy < 10 else False
+                    if vel_xy > 10 or vel_z > 2:
+                        filtered = -1 
+                    elif vel_xy < 5 and vel_z < 2 and gap < 10:
+                        filtered = 1
+                    else:
+                        filtered = 0
+                    is_human, humanid = self.raw_tracking_selected_human(
+                        frameid, humanids[nn_id], tracking_results, scene_paths, filtered = filtered)
+                else :
+                    for humanid in humanids:
+                        is_human, humanid = self.raw_tracking_selected_human(
+                            frameid, humanid, tracking_results, scene_paths, filtered)
+                        if is_human:
+                            break
+            else:
+                for humanid in humanids:
+                    self.filter_human(frameid, humanid, tracking_results, scene_paths, filtered)
+        if tracking:
+            self.load_data.write_txt(tracking_traj_path, save_traj)
         self.copy_save_files()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--remote", '-R', action='store_true')
+    parser.add_argument("--tracking", '-T', action='store_true')
     parser.add_argument("--start_frame", '-S', type=int, default=0)
     # parser.add_argument('--folder', '-f', type=str,
     #                     help='A directory', default="C:\\Users\\DAI\\Desktop\\temp\\segment_by_tracking_03_select")
     parser.add_argument('--folder', '-f', type=str,
-                        help='A directory', default="/hdd/dyd/lidarhumanscene/data/0604_haiyun/segment_by_tracking")
+                        help='A directory', default="/hdd/dyd/lidarhumanscene/data/0604_haiyun/segment_by_tracking_raw_select_raw_select_raw_select")
     args, opts = parser.parse_known_args()
     # select_pcds_by_id(args.folder, ids)
     filter = filter_tracking_by_interactive(args.folder, remote=True)
-    filter.run(start=args.start_frame)
+    filter.run(start=args.start_frame, tracking=True)
 
