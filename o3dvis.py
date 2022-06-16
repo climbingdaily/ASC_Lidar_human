@@ -33,12 +33,23 @@ def read_pcd_from_server(client, filepath, sftp_client = None):
         pc[:, 2] = pc_pcd.pc_data['z']
         if 'rgb' in pc_pcd.fields:
             append = pypcd.decode_rgb_from_pcl(pc_pcd.pc_data['rgb'])/255
+            pc = np.concatenate((pc, append), axis=1)
+        if 'normal_x' in pc_pcd.fields:        
+            append = pc_pcd.pc_data['normal_x'].reshape(-1, 1)
+            pc = np.concatenate((pc, append), axis=1)
+        if 'normal_y' in pc_pcd.fields:        
+            append = pc_pcd.pc_data['normal_y'].reshape(-1, 1)
+            pc = np.concatenate((pc, append), axis=1)
+        if 'normal_z' in pc_pcd.fields:        
+            append = pc_pcd.pc_data['normal_z'].reshape(-1, 1)
+            pc = np.concatenate((pc, append), axis=1)
         if 'intensity' in pc_pcd.fields:        
-            append = pc_pcd.pc_data[pc_pcd.fields[-1]].reshape(-1, 1)
+            append = pc_pcd.pc_data['intensity'].reshape(-1, 1)
+            pc = np.concatenate((pc, append), axis=1)
         
         return np.concatenate((pc, append), axis=1)
     except Exception as e:
-        print(f"Load {filepath} error")
+        print(f"Load point cloud {filepath} error")
     finally:
         remote_file.close()
 

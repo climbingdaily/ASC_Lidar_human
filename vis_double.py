@@ -130,7 +130,7 @@ def vis_pt_and_smpl(smpl_list, pc, pc_idx, vis, pred_smpl_verts=None):
         # load data
         if i in pc_idx:
             pointcloud.points = o3d.utility.Vector3dVector(pc[pc_idx.index(i)])
-            if pred_smpl is not None:
+            if pred_smpl_verts is not None:
                 pred_smpl.vertices = o3d.utility.Vector3dVector(pred_smpl_verts[pc_idx.index(i)])
                 pred_smpl.paint_uniform_color(plt.get_cmap("tab20")(7)[:3])
                 pred_smpl.compute_vertex_normals()
@@ -185,12 +185,12 @@ if __name__ == '__main__':
     parser.add_argument("--start", '-S', type=int, default=0)
     parser.add_argument("--end", '-e', type=int, default=-1)
     parser.add_argument("--scene", '-s', type=str,
-                        default='/hdd/dyd/lidarhumanscene/data/Scenes/0417-03_5cm.pcd')
+                        default='/hdd/dyd/lidarhumanscene/data/Scenes/0604_sparse.pcd')
     parser.add_argument("--remote", '-r', action='store_true')
     parser.add_argument("--file_path", '-F', type=str,
-                        default='/hdd/dyd/lidarhumanscene/data/0417-03/synced_data/two_person_param.pkl')
+                        default='/hdd/dyd/lidarhumanscene/data/0604_haiyun/synced_data/two_person_param.pkl')
     parser.add_argument("--pred_file_path", '-P', type=str,
-                        default='/hdd/dyd/lidarhumanscene/data/0417-03/synced_data/second_person/segments.pkl')
+                        default=None)
                         
     args, opts = parser.parse_known_args()
 
