@@ -187,7 +187,7 @@ if __name__ == '__main__':
     parser.add_argument("--remote", '-R', action='store_true')
     parser.add_argument("--file_path", '-F', type=str,
                         # default='C:\\Users\\DAI\\Desktop\\temp\\data\\pred_5.h5py')
-                        default='C:\\Users\\DAI\\Desktop\\temp\\0417-03\\segments.pkl')
+                        default='/hdd/dyd/lidarhumanscene/data/0417-03/synced_data/second_person/segments.pkl')
                         
     args, opts = parser.parse_known_args()
 
