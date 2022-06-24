@@ -132,7 +132,7 @@ def set_camera(camera_pose):
     camera_pose[:3, :3] = rot_x @ rot_z
     return camera_pose
 
-def get_camera():
+def get_camera(vis):
     ctr = vis.get_view_control()
     init_param = ctr.convert_to_pinhole_camera_parameters()
     return np.array(init_param.extrinsic)
@@ -327,8 +327,8 @@ class o3dvis():
         
         ctr = self.vis.get_view_control()
         elements = ['zoom', 'lookat', 'up', 'front', 'field_of_view']
-        if 'step1' in info.keys():
-            steps = info['step1']
+        # if 'step1' in info.keys():
+        #     steps = info['step1']
         if 'views' in info.keys() and 'steps' in info.keys():
             views = info['views']
             fit_steps = info['steps']
@@ -341,14 +341,16 @@ class o3dvis():
                 for e in elements:
                     z1 = np.array(views[i]['trajectory'][0][e])
                     z2 = np.array(views[i+1]['trajectory'][0][e])
+                    if e in elements:
+                        value = z1 + (count - fit_steps[i])  * (z2-z1) / (fit_steps[i+1] - fit_steps[i])
                     if e == 'zoom':
-                        ctr.set_zoom(z1 +(count - fit_steps[i])  * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                        ctr.set_zoom(value)
                     elif e == 'lookat':
-                        ctr.set_lookat(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                        ctr.set_lookat(value)
                     elif e == 'up':
-                        ctr.set_up(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                        ctr.set_up(value)
                     elif e == 'front':
-                        ctr.set_front(z1 + (count - fit_steps[i]) * (z2-z1) / (fit_steps[i+1] - fit_steps[i]))
+                        ctr.set_front(value)
                 break    
 
         elif 'trajectory' in info.keys():
@@ -359,21 +361,6 @@ class o3dvis():
             ctr.set_front(np.array(info['trajectory'][0]['front']))
 
         return False
-        # for e in elements:
-        #     if count > steps:
-        #         break
-        #     z1 = np.array(info['view1']['trajectory'][0][e])
-        #     z2 = np.array(info['view2']['trajectory'][0][e])
-        #     if e == 'zoom':
-        #         ctr.set_zoom(z1 + count * (z2-z1) / (steps - 1))
-        #     elif e == 'lookat':
-        #         ctr.set_lookat(z1 + count * (z2-z1) / (steps - 1))
-        #     elif e == 'up':
-        #         ctr.set_up(z1 + count * (z2-z1) / (steps - 1))
-        #     elif e == 'front':
-        #         ctr.set_front(z1 + count * (z2-z1) / (steps - 1))
-        #     # elif e == 'field_of_view':
-            #     ctr.change_field_of_view(z1 + count * (z2-z1) / (steps - 1))
     
     def add_mesh_together(self, plydir, mesh_list, colors = None, geometies = None, transformation=None):
         """_summary_
@@ -535,6 +522,10 @@ class o3dvis():
 
         Keyword.VIS_TRAJ = False
         return sphere_list
+    # def transform_view(self, rot, trans=np.array([0,0,0])):
+    #     ctr = self.vis.get_view_control()
+    #     ctr.rotate(rot)
+    #     ctr.translate(trans)
 
     def set_view(self, view=lidar_cap_view):
         ctr = self.vis.get_view_control()

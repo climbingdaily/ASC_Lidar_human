@@ -5,10 +5,10 @@ import open3d as o3d
 from scipy.spatial.transform import Rotation as R
 from o3dvis import o3dvis
 import matplotlib.pyplot as plt
-# from tool_func import imges_to_video
 import torch
 from smpl.smpl import SMPL
 from vis_3d_box import load_data_remote
+from copy import deepcopy
 
 view = {
 	"trajectory" : 
@@ -29,6 +29,10 @@ pt_color = plt.get_cmap("tab20")(1)[:3]
 smpl_color = plt.get_cmap("tab20")(3)[:3]
 gt_smpl_color = plt.get_cmap("tab20")(5)[:3]
 pred_smpl_color = plt.get_cmap("tab20")(7)[:3]
+
+def vertices_to_head(vertices, index = 15):
+    smpl = SMPL()
+    return smpl.get_full_joints(torch.FloatTensor(vertices))[..., index, :]
 
 def poses_to_vertices(poses, trans=None, batch_size = 1024):
     poses = poses.astype(np.float32)
@@ -68,7 +72,7 @@ def load_pred_smpl(file_path, start=0, end=-1, pose='pred_rotmats', trans=None, 
 
     return pred_vertices
 
-def load_pkl_vis(file_path, start=0, end=-1, pred_file_path=None, remote=False):
+def load_pkl_vis(humans, start=0, end=-1, pred_file_path=None, remote=False):
     """
     It loads the pickle file, converts the poses to vertices, and then visualizes the vertices and point
     clouds
@@ -78,20 +82,20 @@ def load_pkl_vis(file_path, start=0, end=-1, pred_file_path=None, remote=False):
     :param end: the last frame to be visualized
     :param remote: whether to load the data from a remote server, defaults to False (optional)
     """
-    import pickle
-    print(f'Load pkl in {file_path}')
-    load_data_class = load_data_remote(remote)
-    humans = load_data_class.load_pkl(file_path)
-
 
     first_person = humans['first_person']
-    pose = first_person['pose']
-    trans = first_person['trans']
+    pose = first_person['pose'].copy()
+    trans = first_person['trans'].copy()
+    if 'lidar_traj' in first_person:
+        lidar_traj = first_person['lidar_traj']
+        trans = lidar_traj[:, 1:4] - (lidar_traj[0,1:4] - trans[0])
+    else:
+        lidar_traj = None
     f_vert = poses_to_vertices(pose, trans)
 
     second_person = humans['second_person']    
-    pose = second_person['pose']
-    trans = second_person['trans']
+    pose = second_person['pose'].copy()
+    trans = second_person['trans'].copy()
     s_vert = poses_to_vertices(pose, trans)
 
     point_clouds = second_person['point_clouds']
@@ -106,7 +110,7 @@ def load_pkl_vis(file_path, start=0, end=-1, pred_file_path=None, remote=False):
 
     return f_vert, s_vert, pred_s_vert, point_clouds, point_valid_idx
 
-def vis_pt_and_smpl(smpl_list, pc, pc_idx, vis, pred_smpl_verts=None):
+def vis_pt_and_smpl(smpl_list, pc, pc_idx, vis, pred_smpl_verts=None, view_list=None):
     """
     > This function takes in two SMPL meshes, a point cloud, and a list of indices that correspond to
     the point cloud. It then displays the point cloud and the two SMPL meshes in a 3D viewer
@@ -145,6 +149,9 @@ def vis_pt_and_smpl(smpl_list, pc, pc_idx, vis, pred_smpl_verts=None):
             smpl.paint_uniform_color(plt.get_cmap("tab20")(idx*2 + 3)[:3])
             smpl.compute_vertex_normals()
 
+        if view_list is not None:
+            vis.set_view(view_list[i])
+
         # add to visualization
         if not init_param:
             vis.change_pause_status()
@@ -161,23 +168,61 @@ def vis_pt_and_smpl(smpl_list, pc, pc_idx, vis, pred_smpl_verts=None):
                 vis.vis.update_geometry(pred_smpl)  
             for smpl in smpl_geometries:
                 vis.vis.update_geometry(smpl)    
-
         vis.waitKey(30, helps=False)
         
     # vis.save_imgs(os.path.join(file_path, f'imgs'))
             
     # imges_to_video(os.path.join(file_path, f'imgs'), delete=True)
 
-def load_scene(vis, pcd_path):
+def generate_views(position, direction):
+    assert len(position) == len(direction)
+
+    mocap_init = np.array([[-1, 0, 0, ], [0, 0, 1], [0, 1, 0]])
+    base_view = {
+        "trajectory" : 
+        [
+            {
+                "field_of_view" : 60.0,
+                "front" : [ 0, -1, 0],
+                "lookat" : [ 0, 1, 1.7],
+                "up" : [ 0, 0, 1],
+                "zoom" : 0.000065
+            }
+        ],
+    }
+
+    if direction[0].shape[0] == 4:
+        func = R.from_quat
+    else:
+        func = R.from_rotvec
+
+    init_direction = func(direction[0]).as_matrix()
+
+    view_list = []
+    for t, r in zip(position, direction):
+        view = deepcopy(base_view)
+        # rot = func(r).as_euler('xyz', degrees=False)
+        rot = func(r).as_matrix() @ init_direction.T
+
+        view['trajectory'][0]['lookat'] = t.tolist()
+        view['trajectory'][0]['up'] = rot @ np.array(view['trajectory'][0]['up'])
+        view['trajectory'][0]['front'] = rot @ np.array(view['trajectory'][0]['front'])
+        view_list.append(view)
+    
+    return view_list
+
+def load_scene(vis, pcd_path=None, scene = None):
     from time import time
     reading_class = load_data_remote(remote=True)
-    t1 = time()
-    print(f'Loading scene from {pcd_path}')
-    scene = reading_class.load_point_cloud(pcd_path)
-    t2 = time()
+    if pcd_path is not None:
+        t1 = time()
+        print(f'Loading scene from {pcd_path}')
+        scene = reading_class.load_point_cloud(pcd_path)
+        t2 = time()
+        print(f'====> Scene loading comsumed {t2-t1:.1f} s.')
     vis.set_view(view)
-    print(f'====> Scene loading comsumed {t2-t1:.1f} s.')
     vis.add_geometry(scene)
+    return scene
 
 if __name__ == '__main__':    
     parser = configargparse.ArgumentParser()
@@ -186,7 +231,7 @@ if __name__ == '__main__':
     parser.add_argument("--end", '-e', type=int, default=-1)
     parser.add_argument("--scene", '-s', type=str,
                         default='/hdd/dyd/lidarhumanscene/data/Scenes/0604_sparse.pcd')
-    parser.add_argument("--remote", '-r', action='store_true')
+    parser.add_argument("--remote", '-r', type=bool, default=True)
     parser.add_argument("--file_path", '-F', type=str,
                         default='/hdd/dyd/lidarhumanscene/data/0604_haiyun/synced_data/two_person_param.pkl')
     parser.add_argument("--pred_file_path", '-P', type=str,
@@ -194,11 +239,23 @@ if __name__ == '__main__':
                         
     args, opts = parser.parse_known_args()
 
-    vis = o3dvis(width=1280, height=720)
+    fvis = o3dvis("First view", width=1280, height=720)
+    # svis = o3dvis("Second view", width=1280, height=720)
 
-    load_scene(vis, args.scene)
+    _ = load_scene(fvis, args.scene)
+    # load_scene(svis, scene=scene)
+
+    print(f'Load pkl in {args.file_path}')
+    load_data_class = load_data_remote(args.remote)
+    humans = load_data_class.load_pkl(args.file_path)
 
     smpl_a, smpl_b, pred_smpl_b, pc, pc_idx = load_pkl_vis(
-        args.file_path, args.start, args.end, args.pred_file_path, remote=True)
+        humans, args.start, args.end, args.pred_file_path, remote=args.remote)
 
-    vis_pt_and_smpl([smpl_a, smpl_b], pc, pc_idx, vis, pred_smpl_verts = pred_smpl_b)
+    FPV = generate_views(humans['first_person']['lidar_traj']
+                         [:, 1:4], humans['first_person']['lidar_traj'][:, 4:8])
+    SPV = generate_views(vertices_to_head(
+        smpl_b) + np.array([0, 0, 0.2]), humans['second_person']['pose'][:, :3])
+
+    # vis_pt_and_smpl([smpl_a, smpl_b], pc, pc_idx, fvis, pred_smpl_verts = pred_smpl_b, view_list = FPV)
+    vis_pt_and_smpl([smpl_a, smpl_b], pc, pc_idx, fvis, pred_smpl_verts = pred_smpl_b, view_list = SPV)

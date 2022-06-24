@@ -245,37 +245,3 @@ def append_alpha(imtmp):
     b_channel, g_channel, r_channel = cv2.split(imtmp)
     im_RGBA = cv2.merge((b_channel, g_channel, r_channel, alpha))
     return im_RGBA
-
-
-def render_model(verts,
-                 faces,
-                 w,
-                 h,
-                 cam,
-                 near=0.5,
-                 far=25,
-                 img=None,
-                 do_alpha=False,
-                 color_id=None):
-    rn = _create_renderer(
-        w=w, h=h, near=near, far=far, rt=cam.rt, t=cam.t, f=cam.f, c=cam.c)
-
-    # Uses img as background, otherwise white background.
-    if img is not None:
-        rn.background_image = img / 255. if img.max() > 1 else img
-
-    if color_id is None:
-        color = colors['light_blue']
-    else:
-        color_list = list(colors.values())
-        color = color_list[color_id % len(color_list)]
-
-    imtmp = simple_renderer(rn, verts, faces, color=color)
-
-    # If white bg, make transparent.
-    if img is None and do_alpha:
-        imtmp = get_alpha(imtmp)
-    elif img is not None and do_alpha:
-        imtmp = append_alpha(imtmp)
-
-    return imtmp

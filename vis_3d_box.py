@@ -155,7 +155,7 @@ class load_data_remote(object):
                     pointcloud.colors = o3d.utility.Vector3dVector(pcd[:, 3:6])  
                 elif pcd.shape[1] > 6:
                     pointcloud.colors = o3d.utility.Vector3dVector(pcd[:, 3:6]) 
-                    pointcloud.normals = o3d.utility.Vector3dVector(pcd[:, 6:9]) 
+                    # pointcloud.normals = o3d.utility.Vector3dVector(pcd[:, 6:9]) 
             else:
                 pcd = o3d.io.read_point_cloud(file_name)
                 points = np.asarray(pcd.points)
