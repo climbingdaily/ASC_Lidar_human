@@ -314,7 +314,7 @@ if __name__ == '__main__':
     fvis = o3dvis("First view", width=1280, height=720)
     # svis = o3dvis("Second view", width=1280, height=720)
 
-    # _ = load_scene(fvis, args.scene)
+    _ = load_scene(fvis, args.scene)
     # load_scene(svis, scene=scene)
 
     print(f'Load pkl in {args.file_path}')
