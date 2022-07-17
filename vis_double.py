@@ -136,6 +136,17 @@ def load_pred_smpl(file_path, start=0, end=-1, pose='pred_rotmats', trans=None, 
 
     return pred_vertices
 
+def get_head_global_rots(pose):
+    if pose.shape[1] == 72:
+        pose = pose.reshape(-1, 24, 3)
+
+    head_parents = [0, 3, 6, 9, 12, 15]
+    head_rots = np.eye(3)
+    for r in head_parents[::-1]:
+        head_rots = R.from_rotvec(pose[:, r]).as_matrix() @ head_rots
+    head_rots = head_rots @ np.array([[-1, 0, 0], [0, 0, 1], [0, 1, 0]]).T
+    return head_rots
+
 def load_pkl_vis(humans, start=0, end=-1, pred_file_path=None, remote=False):
     """
     It loads the pickle file, converts the poses to vertices, and then visualizes the vertices and point
@@ -150,12 +161,22 @@ def load_pkl_vis(humans, start=0, end=-1, pred_file_path=None, remote=False):
     first_person = humans['first_person']
     pose = first_person['pose'].copy()
     trans = first_person['mocap_trans'].copy()
+    f_vert = poses_to_vertices(pose)
     if 'lidar_traj' in first_person:
-        lidar_traj = first_person['lidar_traj']
-        trans = lidar_traj[:, 1:4] - (lidar_traj[0,1:4] - trans[0])
-    else:
-        lidar_traj = None
-    f_vert = poses_to_vertices(pose, trans)
+        lidar_traj = first_person['lidar_traj'][:, 1:4]
+        head = vertices_to_head(f_vert, 15)
+        root = vertices_to_head(f_vert, 0)
+        head_to_root = (root - head).numpy()
+        
+        head_rots = get_head_global_rots(pose)
+
+        lidar_to_head =  head[0] - lidar_traj[0] + trans[0] 
+        lidar_to_head = head_rots @ lidar_to_head.numpy()
+
+        trans = lidar_traj + lidar_to_head + head_to_root
+        # trans = lidar_traj[:, 1:4]
+    
+    f_vert += np.expand_dims(trans.astype(np.float32), 1)
 
     second_person = humans['second_person']    
     pose = second_person['pose'].copy()
@@ -209,13 +230,15 @@ def vis_pt_and_smpl(smpl_list, pc, pc_idx, vis, pred_smpl_verts=None, view_list=
         else:
             pointcloud.points = o3d.utility.Vector3dVector(np.array([[0,0,0]]))
             pred_smpl.vertices = o3d.utility.Vector3dVector(np.asarray(pred_smpl.vertices) * 0)
+            pred_smpl.compute_vertex_normals()
+
         # color
         pointcloud.paint_uniform_color(pt_color)
 
         for idx, smpl in enumerate(smpl_geometries):
             smpl.vertices = o3d.utility.Vector3dVector(smpl_list[idx][i])
-            smpl.paint_uniform_color(plt.get_cmap("tab20")(idx*2 + 3)[:3])
             smpl.compute_vertex_normals()
+            smpl.paint_uniform_color(plt.get_cmap("tab20")(idx*2 + 3)[:3])
 
         if view_list is not None:
             vis.set_view(view_list[i])
@@ -250,7 +273,7 @@ def generate_views(position, direction, filter=True, rad=np.deg2rad(15)):
         "trajectory" : 
         [
             {
-                "field_of_view" : 60.0,
+                "field_of_view" : 90.0,
                 "front" : [ 0, -np.cos(rad), np.sin(rad)],
                 "lookat" : [ 0, 1, 1.7],
                 "up" : [ 0, np.sin(rad), np.cos(rad)],
@@ -262,7 +285,7 @@ def generate_views(position, direction, filter=True, rad=np.deg2rad(15)):
     if direction[0].shape[0] == 4:
         func = R.from_quat
     else:
-        func = R.from_rotvec
+        func = R.from_matrix
 
     init_direction = func(direction[0]).as_matrix()
 
@@ -328,10 +351,10 @@ if __name__ == '__main__':
     #                      [:, 1:4], humans['first_person']['lidar_traj'][:, 4:8])
 
     FPV = generate_views(humans['first_person']['lidar_traj']
-                         [:, 1:4], humans['first_person']['pose'][:, :3])
+                         [:, 1:4], get_head_global_rots(humans['first_person']['pose']))
 
     SPV = generate_views(vertices_to_head(
-        smpl_b) + np.array([0, 0, 0.2]), humans['second_person']['pose'][:, :3])
+        smpl_b) + np.array([0, 0, 0.2]), get_head_global_rots(humans['second_person']['pose']))
 
     vis_pt_and_smpl([smpl_a, smpl_b], pc, pc_idx, fvis, pred_smpl_verts = pred_smpl_b, view_list = FPV)
     vis_pt_and_smpl([smpl_a, smpl_b], pc, pc_idx, fvis, pred_smpl_verts = pred_smpl_b, view_list = SPV)

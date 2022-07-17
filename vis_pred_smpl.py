@@ -34,12 +34,12 @@ def make_cloud_in_vis_center(point_cloud):
     yaw = np.arctan2(center[1], center[0])
 
     # rot the points, make them on the X-axis
-    rt = R.from_rotvec(np.array([0, 0, -yaw])).as_matrix()
+    rot = R.from_rotvec(np.array([0, 0, -yaw])).as_matrix()
 
     # put points in 5 meters distance
-    trans_x = 5 - (rt @ center)[0]
+    trans_x = 5 - (rot @ center)[0]
 
-    rt = np.concatenate((rt.T, np.array([[trans_x, 0, 0]]))).T
+    rt = np.concatenate((rot.T, np.array([[trans_x, 0, 0]]))).T
     rt = np.concatenate((rt, np.array([[0, 0, 0, 1]])))
 
     point_cloud.transform(rt)
@@ -92,35 +92,44 @@ def load_pkl_vis(file_path, start=0, end=-1, points='point_clouds', pose='pred_r
     vis_pt_and_smpl(pred_vertices, point_clouds)
 
 
-def load_hdf5_vis(file_path, start=0, end=-1, points='point_clouds', pose='pred_rotmats', gt_pose='gt_pose'):
+def load_hdf5_vis(file_path, start=0, end=-1, points='point_clouds', pred_rots='pred_rotmats', gt_pose='pose'):
     """
-    载入h5py, 读取点云和pose, 以及trans
-    It loads the vertices and point clouds from the hdf5 file
+    > This function loads a hdf5 file, and visualizes the point clouds and the SMPL vertices
     
     :param file_path: the path to the hdf5 file
-    :param start: the index of the first sample you want to load, defaults to 0 (optional)
-    :param end: the last index of the data you want to load
+    :param start: the index of the first frame to visualize, defaults to 0 (optional)
+    :param end: the last frame to visualize
     :param points: the name of the point cloud data in the hdf5 file, defaults to point_clouds
     (optional)
-    :param pose: the predicted pose, defaults to pred_rotmats (optional)
-    :param gt_pose: ground truth pose, defaults to gt_pose (optional)
+    :param pred_rots: the name of the hdf5 dataset that contains the predicted rotations, defaults to
+    pred_rotmats (optional)
+    :param gt_pose: the ground truth pose, defaults to pose (optional)
     """
     with h5py.File(file_path, mode='r') as f:
         # 'full_joints', 'lidar_to_mocap_RT', 'point_clouds', 'points_num', 'pose', 'rotmats', 'shape', 'trans'
         print(f.keys())
-        pred_pose = f[pose]
-        if end == -1:
-            end = pred_pose.shape[0]
-        pred_pose = pred_pose[start:end]
-        pose = f[gt_pose][start:end]
-        # gt_rotmats = f['gt_rotmats'][:]
-        point_clouds = f[points][start:end]
+        if pred_rots in f:
+            pred_pose = f[pred_rots]
+            if end == -1:
+                end = pred_pose.shape[0]
+            pred_pose = pred_pose[start:end]
+            pred_vertices = poses_to_vertices(pred_pose)
 
-        vertices = poses_to_vertices(pose)
-        # gt_vertices = poses_to_vertices(gt_rotmats)
-        pred_vertices = poses_to_vertices(pred_pose)
+            gt_pose = f[gt_pose][start:end]
+            gt_vertices = poses_to_vertices(gt_pose)
 
-        vis_pt_and_smpl(pred_vertices, point_clouds, vertices)
+            point_clouds = f[points][start:end]
+            vis_pt_and_smpl(pred_vertices, point_clouds, gt_vertices)
+        else:
+            gt_pose = f[gt_pose]
+            if end == -1:
+                end = gt_pose.shape[0]
+
+            gt_pose = gt_pose[start:end]
+            gt_vertices = poses_to_vertices(gt_pose)
+            point_clouds = f[points][start:end]
+            vis_pt_and_smpl(gt_vertices, point_clouds, gt_vertices)
+
     
 def vis_pt_and_smpl(pred_smpl, pc, gt_smpl= None):
     # assert v.shape[0] == pc.shape[0], "Groundtruth Data Shape are not compatible"
@@ -147,7 +156,7 @@ def vis_pt_and_smpl(pred_smpl, pc, gt_smpl= None):
 
         # transform
         rt, center = make_cloud_in_vis_center(pointcloud) # 根据点的中心点，在XY平面将点云旋转平移
-        rt[:3, 3] = np.array([5, -0.5, centerz])
+        rt[:3, 3] = np.array([5, -0.5, center[-1]])
         if gt_smpl is not None:
             gt.transform(rt)
             gt.compute_vertex_normals()
@@ -186,8 +195,8 @@ if __name__ == '__main__':
     parser.add_argument("--end", '-E', type=int, default=-1)
     parser.add_argument("--remote", '-R', action='store_true')
     parser.add_argument("--file_path", '-F', type=str,
-                        # default='C:\\Users\\DAI\\Desktop\\temp\\data\\pred_5.h5py')
-                        default='/hdd/dyd/lidarhumanscene/data/0417-03/synced_data/second_person/segments.pkl')
+                        default='C:\\Users\\DAI\\Desktop\\temp\\chenchen001_label.h5py')
+                        # default='/hdd/dyd/lidarhumanscene/data/0417-03/synced_data/second_person/segments.pkl')
                         
     args, opts = parser.parse_known_args()
 

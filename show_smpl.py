@@ -184,12 +184,12 @@ if __name__ == "__main__":
 
     show_grid = False
     file_name = 'lab_building'
-    lidar_file = "E:\\SCSC_DATA\HumanMotion\\visualization\\" + file_name + "_lidar_filt_synced_offset.txt"
+    lidar_file = "c:\\Users\\DAI\\Desktop\\0623002_sparse\\lidar_trajectory.txt"
     plydir = 'E:\\SCSC_DATA\HumanMotion\\1023\\SMPL\\shiyanlou002_step_1'
     pcd_dir = 'E:\\SCSC_DATA\\HumanMotion\\scenes'
 
     if len(sys.argv) < 2:
-        key = '-m'
+        key = '-l'
 
     else:
         key = sys.argv[1]
@@ -219,15 +219,18 @@ if __name__ == "__main__":
     if key == '-l':
         rt_file = np.loadtxt(lidar_file, dtype=float)        
         R_init = R.from_quat(rt_file[0, 4: 8]).as_matrix()  #3*3
-        for i in range(0, 500, 20):
+        init = False
+        for i in range(0, len(rt_file), 15):
             # 读取 i 帧的 RT
             R_lidar = R.from_quat(rt_file[i, 4: 8]).as_matrix()  #3*3
-            # R_lidar = np.matmul(R_lidar, np.linalg.inv(R_init)) # 乘第一帧的逆
+            # R_lidar = R_lidar @ R_init # 乘第一帧的逆
             R_T = rt_file[i, 1:4].reshape(1,3)   #1*3
             R_lidar = R_lidar.T + R_T
             line_pcd, point_pcd = triangle_pcd(R_T, R_lidar)
             # geometies.append(line_pcd)
-            vis.add_geometry(line_pcd, reset_bounding_box=False)
+            vis.add_geometry(line_pcd, reset_bounding_box=True)
+            if not init:
+                init = True
             vis.poll_events()
             vis.update_renderer()
             cv2.waitKey(10)
